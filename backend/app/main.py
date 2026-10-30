@@ -9,6 +9,12 @@ from backend.app.config import settings
 from backend.app.db.database import Database, get_db
 from backend.app.ingestion.pipeline import IngestionPipeline
 from backend.app.ingestion.registry import SourceRegistry
+from backend.app.matching.service import MatchingService
+from backend.app.schemas.matching import (
+    MatchingResponse,
+    ScholarshipMatchResult,
+    StudentProfile,
+)
 from backend.app.schemas.scholarship import (
     IngestionRunRecord,
     ScholarshipRecord,
@@ -35,6 +41,7 @@ app.add_middleware(
 db = get_db()
 registry = SourceRegistry(db=db)
 pipeline = IngestionPipeline(registry=registry, db=db)
+matching_service = MatchingService(db=db)
 
 
 class IngestionRequest(BaseModel):
@@ -148,3 +155,24 @@ def list_scholarships(
         source_id=source_id,
         limit=limit,
     )
+
+
+# =============================================================================
+# Explainable Matching Endpoints (Phase 4)
+# =============================================================================
+
+
+@app.post("/api/matching/evaluate", response_model=MatchingResponse, tags=["Matching"])
+def evaluate_matching(
+    profile: StudentProfile,
+    verified_only: bool = Query(default=False, description="Filter results to verified scholarships only"),
+) -> MatchingResponse:
+    """Evaluate student profile against stored scholarships with deterministic explainability."""
+    return matching_service.evaluate_profile(profile, verified_only=verified_only)
+
+
+@app.post("/api/matching/eligible", response_model=List[ScholarshipMatchResult], tags=["Matching"])
+def get_eligible_scholarships(profile: StudentProfile) -> List[ScholarshipMatchResult]:
+    """Retrieve only confirmed eligible, verified scholarship schemes for the student profile."""
+    return matching_service.get_confirmed_eligible(profile)
+
