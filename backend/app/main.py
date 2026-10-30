@@ -137,12 +137,14 @@ def list_ingestion_runs(limit: int = Query(default=20, ge=1, le=100)) -> List[In
 @app.get("/api/scholarships", response_model=List[ScholarshipRecord], tags=["Scholarships"])
 def list_scholarships(
     verification_status: Optional[VerificationStatus] = None,
+    status: Optional[VerificationStatus] = None,
     source_id: Optional[str] = None,
     limit: int = Query(default=100, ge=1, le=500),
 ) -> List[ScholarshipRecord]:
     """Retrieve stored scholarship records with optional filtering by status and source."""
+    effective_status = status or verification_status
     return db.get_scholarship_records(
-        verification_status=verification_status,
+        verification_status=effective_status,
         source_id=source_id,
         limit=limit,
     )
