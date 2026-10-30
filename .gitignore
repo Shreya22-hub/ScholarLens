@@ -13,6 +13,9 @@ env/
 .env
 .env.local
 
+# SSH keys
+.ssh/
+
 # Database
 *.db
 *.sqlite3
