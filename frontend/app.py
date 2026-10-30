@@ -12,6 +12,14 @@ from typing import Any, Dict, List, Optional
 import requests
 import streamlit as st
 
+from frontend.helpers import (
+    categorize_match_results,
+    evaluate_student_matching,
+    format_amount_display,
+    format_deadline_display,
+    validate_and_build_profile,
+)
+
 # Configure page
 st.set_page_config(
     page_title="ScholarLens | Verified Indian Scholarships",
@@ -84,31 +92,6 @@ def trigger_ingestion(source_id: Optional[str] = None) -> Dict[str, Any]:
             return {"summary": f"Ingested {len(results)} source(s) locally", "results": results}
     except Exception as e:
         return {"error": f"Failed to execute ingestion: {str(e)}"}
-
-
-def evaluate_student_matching(profile_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Submit student profile to /api/matching/evaluate with direct service fallback."""
-    try:
-        res = requests.post(f"{BACKEND_URL}/api/matching/evaluate", json=profile_data, timeout=10.0)
-        if res.status_code == 200:
-            return res.json()
-    except Exception:
-        pass
-
-    # Direct fallback if backend API service is offline
-    try:
-        from backend.app.db.database import get_db
-        from backend.app.matching.service import MatchingService
-        from backend.app.schemas.matching import StudentProfile
-
-        profile = StudentProfile(**profile_data)
-        service = MatchingService(db=get_db())
-        resp = service.evaluate_profile(profile)
-        return resp.model_dump(mode="json")
-    except Exception:
-        pass
-
-    return None
 
 
 # =============================================================================
@@ -239,125 +222,185 @@ with tab_matcher:
         run_match = st.form_submit_button("🔍 Find Matching Scholarships", use_container_width=True)
 
     if run_match:
-        # Build clean StudentProfile payload
-        level_map = {
-            "Undergraduate (Degree / B.Tech / MBBS / B.Sc)": "undergraduate",
-            "Class 12 / Higher Secondary (+2)": "class_12",
-            "Class 10 / Secondary School": "class_10",
-            "Polytechnic Diploma": "diploma",
-            "Postgraduate (Master's / M.Tech / MBA)": "postgraduate",
-            "Doctorate / Ph.D": "doctorate",
-        }
-        gender_map = {
-            "Female (Girl Student)": "female",
-            "Male": "male",
-            "Other": "other",
-        }
-        cat_map = {
-            "General": "general",
-            "OBC (Other Backward Classes)": "obc",
-            "SC (Scheduled Caste)": "sc",
-            "ST (Scheduled Tribe)": "st",
-            "EWS (Economically Weaker Section)": "ews",
-            "Minority Community": "minority",
-        }
+        is_valid, err_msg, profile_payload = validate_and_build_profile(
+            ed_choice=ed_choice,
+            course_input=course_input,
+            income_num=income_num,
+            marks_num=marks_num,
+            gender_choice=gender_choice,
+            cat_choice=cat_choice,
+            state_input=state_input,
+            is_pwd=is_pwd,
+        )
 
-        profile_payload: Dict[str, Any] = {}
-        if ed_choice in level_map:
-            profile_payload["education_level"] = level_map[ed_choice]
-        if course_input and course_input.strip():
-            profile_payload["course"] = course_input.strip()
-        if income_num > 0:
-            profile_payload["annual_family_income"] = float(income_num)
-        if marks_num > 0.0:
-            profile_payload["academic_percentage"] = float(marks_num)
-        if gender_choice in gender_map:
-            profile_payload["gender"] = gender_map[gender_choice]
-        if cat_choice in cat_map:
-            profile_payload["category"] = cat_map[cat_choice]
-        if state_input and state_input.strip():
-            profile_payload["state_of_residence"] = state_input.strip()
-        if is_pwd:
-            profile_payload["is_differently_abled"] = True
-
-        with st.spinner("Evaluating profile against official scholarship criteria..."):
-            match_res = evaluate_student_matching(profile_payload)
-
-        if not match_res:
-            st.error("Failed to connect to matching service.")
-        elif match_res.get("total_evaluated", 0) == 0:
-            st.info("📌 **No scholarship records found in database.** Run ingestion from the sidebar to populate schemes.")
+        if not is_valid:
+            st.error(f"⚠️ {err_msg}")
         else:
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("🟢 Confirmed Eligible", match_res.get("eligible_count", 0))
-            m2.metric("🟡 Potentially Eligible", match_res.get("potentially_eligible_count", 0))
-            m3.metric("🔴 Not Eligible", match_res.get("not_eligible_count", 0))
-            m4.metric("⚠️ Unverified / Provisional", match_res.get("unverified_count", 0))
+            with st.spinner("Evaluating profile against official scholarship criteria..."):
+                success, err_api, match_res = evaluate_student_matching(profile_payload)
 
-            results = match_res.get("results", [])
-            for r in results:
-                outcome = r.get("match_outcome")
-                is_provisional = r.get("is_provisional", False)
-                ver_status = r.get("verification_status", "unverified")
-
-                if outcome == "eligible":
-                    badge_color = "green"
-                    badge_label = "CONFIRMED ELIGIBLE"
-                elif outcome == "potentially_eligible":
-                    badge_color = "orange"
-                    badge_label = "POTENTIALLY ELIGIBLE (PROVISIONAL)" if is_provisional else "POTENTIALLY ELIGIBLE"
-                else:
-                    badge_color = "red"
-                    badge_label = "NOT ELIGIBLE"
-
-                with st.container(border=True):
-                    st.markdown(
-                        f"### {r.get('scheme_name')} "
-                        f"<span style='font-size: 13px; padding: 3px 8px; border-radius: 4px; "
-                        f"background-color: {badge_color}; color: white;'>{badge_label}</span>",
-                        unsafe_allow_html=True,
+            if not success:
+                st.error(f"⚠️ {err_api}")
+            elif not match_res or match_res.get("total_evaluated", 0) == 0:
+                st.info(
+                    "📌 **No scholarship records found in local database.**\n\n"
+                    "Official government scholarship portals (such as National Scholarship Portal, UGC, and AICTE) "
+                    "enforce access restrictions (such as robots.txt disallowances, SSL certificate requirements, or dynamic dashboards) "
+                    "which our polite crawler strictly respects without unauthorized bypass.\n\n"
+                    "Use the sidebar controls to trigger polite ingestion and inspect portal responses."
+                )
+            else:
+                if match_res.get("is_fallback"):
+                    st.warning(
+                        "⚠️ **Notice: Local Fallback Engine Active** — The backend API server is unreachable. "
+                        "These results were computed using the local in-process fallback engine, not verified through the live backend API service."
                     )
-                    st.write(f"**Authority**: {r.get('government_authority')}")
-                    st.info(f"💡 **Evaluation Explanation**: {r.get('explanation')}")
 
-                    # Detailed Passed / Failed / Unknown Breakdowns
-                    c_pass, c_fail, c_unk = st.columns(3)
-                    with c_pass:
-                        passed = r.get("passed_criteria", [])
-                        if passed:
-                            st.markdown("✅ **Passed Conditions:**")
-                            for p in passed:
-                                st.markdown(f"- `{p.get('criterion_type').upper()}`: {p.get('reason')}")
-                    with c_fail:
-                        failed = r.get("failed_criteria", [])
-                        if failed:
-                            st.markdown("❌ **Failed Conditions:**")
-                            for f in failed:
-                                st.markdown(f"- `{f.get('criterion_type').upper()}`: {f.get('reason')}")
-                    with c_unk:
-                        unknown = r.get("unknown_criteria", [])
-                        if unknown:
-                            st.markdown("❓ **Unknown / Pending:**")
-                            for u in unknown:
-                                st.markdown(f"- `{u.get('criterion_type').upper()}`: {u.get('reason')}")
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("🟢 Confirmed Eligible", match_res.get("eligible_count", 0))
+                m2.metric("🟡 Potentially Eligible", match_res.get("potentially_eligible_count", 0))
+                m3.metric("🔴 Not Eligible", match_res.get("not_eligible_count", 0))
+                m4.metric("⚠️ Unverified / Provisional", match_res.get("unverified_count", 0))
 
-                    # Meta info
-                    col_amt, col_dead, col_url = st.columns(3)
-                    with col_amt:
-                        amt = r.get("scholarship_amount")
-                        st.write(f"💰 **Amount**: `{amt}`" if amt else "💰 **Amount**: *Unverified / Unknown*")
-                    with col_dead:
-                        dline = r.get("application_deadline")
-                        st.write(f"📅 **Deadline**: `{dline}`" if dline else "📅 **Deadline**: *To be announced*")
-                    with col_url:
-                        url = r.get("official_source_url")
-                        st.write(f"🔗 **Source**: [{url}]({url})")
+                st.caption(
+                    "📊 **Result Categorization**: Total evaluated scholarships are partitioned into "
+                    "**Confirmed Eligible**, **Potentially Eligible**, and **Not Eligible** (sum equals total evaluated). "
+                    "**Provisional / Unverified** provides a dedicated audit view of schemes lacking primary source verification."
+                )
 
-                    evidence = r.get("evidence_references", {})
-                    if evidence:
-                        with st.expander("🔍 Grounded Source Citations"):
-                            for k, v in evidence.items():
-                                st.markdown(f"- **{k.replace('_', ' ').title()}**: *\"{v}\"*")
+                results = match_res.get("results", [])
+                categorized = categorize_match_results(results)
+                confirmed_eligible = categorized["confirmed_eligible"]
+                potentially_eligible = categorized["potentially_eligible"]
+                not_eligible = categorized["not_eligible"]
+                unverified_provisional = categorized["unverified_provisional"]
+
+                st.markdown("---")
+                subtab_el, subtab_pot, subtab_not, subtab_prov = st.tabs([
+                    f"🟢 Confirmed Eligible ({len(confirmed_eligible)})",
+                    f"🟡 Potentially Eligible ({len(potentially_eligible)})",
+                    f"🔴 Not Eligible ({len(not_eligible)})",
+                    f"⚠️ Provisional / Unverified ({len(unverified_provisional)})",
+                ])
+
+                def render_match_card(r: Dict[str, Any], show_provisional_alert: bool = False):
+                    outcome = r.get("match_outcome")
+                    is_prov = r.get("is_provisional", False)
+                    ver_status = r.get("verification_status", "unverified")
+
+                    if outcome == "eligible" and not is_prov and ver_status == "verified":
+                        badge_color = "green"
+                        badge_label = "CONFIRMED ELIGIBLE"
+                    elif outcome == "potentially_eligible":
+                        badge_color = "orange"
+                        badge_label = "POTENTIALLY ELIGIBLE (PROVISIONAL)" if is_prov else "POTENTIALLY ELIGIBLE"
+                    else:
+                        badge_color = "red"
+                        badge_label = "NOT ELIGIBLE"
+
+                    with st.container(border=True):
+                        st.markdown(
+                            f"### {r.get('scheme_name')} "
+                            f"<span style='font-size: 13px; padding: 3px 8px; border-radius: 4px; "
+                            f"background-color: {badge_color}; color: white;'>{badge_label}</span>",
+                            unsafe_allow_html=True,
+                        )
+                        st.write(f"**Authority**: {r.get('government_authority')}")
+
+                        if show_provisional_alert and is_prov:
+                            st.warning(
+                                "⚠️ **Provisional Evaluation Notice**: This scholarship record is UNVERIFIED against official "
+                                "circulars. Eligibility cannot be confirmed until primary documents are validated."
+                            )
+
+                        st.info(f"💡 **Evaluation Explanation**: {r.get('explanation')}")
+
+                        # Detailed Passed / Failed / Unknown Breakdowns
+                        c_pass, c_fail, c_unk = st.columns(3)
+                        with c_pass:
+                            passed = r.get("passed_criteria", [])
+                            if passed:
+                                st.markdown("✅ **Passed Conditions:**")
+                                for p in passed:
+                                    st.markdown(f"- `{p.get('criterion_type').upper()}`: {p.get('reason')}")
+                            else:
+                                st.caption("No criteria confirmed passed yet.")
+                        with c_fail:
+                            failed = r.get("failed_criteria", [])
+                            if failed:
+                                st.markdown("❌ **Failed Conditions:**")
+                                for f in failed:
+                                    st.markdown(f"- `{f.get('criterion_type').upper()}`: {f.get('reason')}")
+                        with c_unk:
+                            unknown = r.get("unknown_criteria", [])
+                            if unknown:
+                                st.markdown("❓ **Unknown / Pending:**")
+                                for u in unknown:
+                                    st.markdown(f"- `{u.get('criterion_type').upper()}`: {u.get('reason')}")
+
+                        # Honest amount and deadline display
+                        col_amt, col_dead, col_url = st.columns(3)
+                        with col_amt:
+                            amt_display = format_amount_display(
+                                r.get("scholarship_amount"),
+                                verification_status=ver_status,
+                                verification_notes=r.get("explanation"),
+                            )
+                            st.write(f"💰 **Amount**: `{amt_display}`")
+                        with col_dead:
+                            dead_disp, dead_caption = format_deadline_display(
+                                r.get("application_deadline"),
+                                r.get("application_deadline_raw"),
+                                verification_status=ver_status,
+                            )
+                            st.write(f"📅 **Deadline**: `{dead_disp}`")
+                            if dead_caption:
+                                st.caption(dead_caption)
+                        with col_url:
+                            url = r.get("official_source_url")
+                            st.write(f"🔗 **Source**: [{url}]({url})")
+
+                        evidence = r.get("evidence_references", {})
+                        if evidence:
+                            with st.expander("🔍 Grounded Source Citations"):
+                                for k, v in evidence.items():
+                                    st.markdown(f"- **{k.replace('_', ' ').title()}**: *\"{v}\"*")
+
+                with subtab_el:
+                    if confirmed_eligible:
+                        for r in confirmed_eligible:
+                            render_match_card(r)
+                    else:
+                        st.info(
+                            "ℹ️ **No verified scholarships currently match all your mandatory criteria.**\n\n"
+                            "- Check **Potentially Eligible** for schemes where criteria are pending additional profile details.\n"
+                            "- Check **Provisional / Unverified** for schemes that match your profile but remain unverified against official circulars."
+                        )
+
+                with subtab_pot:
+                    if potentially_eligible:
+                        for r in potentially_eligible:
+                            render_match_card(r, show_provisional_alert=r.get("is_provisional", False))
+                    else:
+                        st.info("ℹ️ **No potentially eligible scholarships pending information.**")
+
+                with subtab_not_eligible:
+                    if not_eligible:
+                        for r in not_eligible:
+                            render_match_card(r)
+                    else:
+                        st.info("ℹ️ **No scholarships marked not eligible.**")
+
+                with subtab_prov:
+                    if unverified_provisional:
+                        st.warning(
+                            "⚠️ **Provisional Matching Section**: The scholarships below are stored in the local database "
+                            "but remain UNVERIFIED against primary source circulars. They are never presented as confirmed eligible."
+                        )
+                        for r in unverified_provisional:
+                            render_match_card(r, show_provisional_alert=True)
+                    else:
+                        st.info("ℹ️ **No provisional or unverified scholarship records in database.**")
 
 # -----------------------------------------------------------------------------
 # Tab 2: Stored Scholarship Records
@@ -419,19 +462,13 @@ with tab_scholarships:
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    if amount:
-                        st.write(f"💰 **Scholarship Amount**: `{amount}`")
-                    else:
-                        st.write("💰 **Scholarship Amount**: *Not verified / Pending official circular*")
+                    amt_disp = format_amount_display(amount, verification_status=status, verification_notes=notes)
+                    st.write(f"💰 **Scholarship Amount**: `{amt_disp}`")
 
-                    if deadline_iso:
-                        st.write(f"📅 **Application Deadline**: `{deadline_iso}` (ISO)")
-                        if deadline_raw and deadline_raw != deadline_iso:
-                            st.caption(f"Source text: \"{deadline_raw}\"")
-                    elif deadline_raw:
-                        st.write(f"📅 **Application Deadline**: `{deadline_raw}` *(Date unverified)*")
-                    else:
-                        st.write("📅 **Application Deadline**: *To be announced / Not established*")
+                    dead_disp, dead_cap = format_deadline_display(deadline_iso, deadline_raw, verification_status=status)
+                    st.write(f"📅 **Application Deadline**: `{dead_disp}`")
+                    if dead_cap:
+                        st.caption(dead_cap)
 
                 with c2:
                     st.write(f"🔗 **Official Source**: [{item.get('official_source_url')}]({item.get('official_source_url')})")
