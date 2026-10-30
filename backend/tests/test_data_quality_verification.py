@@ -229,6 +229,44 @@ class TestConservativeVerificationRules(unittest.TestCase):
         self.assertEqual(status, VerificationStatus.UNVERIFIED)
         self.assertIn("Eligibility criteria lack verifiable", notes)
 
+    def test_missing_field_level_evidence_fails_verification(self):
+        """A generic page quotation must not verify unsupported field claims."""
+        status, notes = evaluate_verification_status(
+            scheme_name="AICTE Pragati Scholarship Scheme for Girl Students",
+            government_authority="All India Council for Technical Education",
+            scholarship_amount="Rs. 50,000 per annum",
+            application_deadline=None,
+            eligibility_criteria=["Students admitted to 1st year degree programme"],
+            supporting_quotations=["Scholarship information available on this portal."],
+            field_evidence={},
+        )
+        self.assertEqual(status, VerificationStatus.UNVERIFIED)
+        self.assertIn("field-level source evidence", notes)
+
+    def test_amount_must_match_field_evidence(self):
+        """Amount extracted from a different value must not be marked verified."""
+        status, notes = evaluate_verification_status(
+            scheme_name="AICTE Pragati Scholarship Scheme for Girl Students",
+            government_authority="All India Council for Technical Education",
+            scholarship_amount="Rs. 50,000 per annum",
+            application_deadline=None,
+            eligibility_criteria=["Students admitted to 1st year degree programme"],
+            supporting_quotations=[
+                "AICTE Pragati Scholarship Scheme for Girl Students",
+                "All India Council for Technical Education",
+                "Rs. 50,000 per annum",
+                "Students admitted to 1st year degree programme",
+            ],
+            field_evidence={
+                "scheme_name": "AICTE Pragati Scholarship Scheme for Girl Students",
+                "government_authority": "All India Council for Technical Education",
+                "scholarship_amount": "Scholarship amount Rs. 5,000 per annum",
+                "eligibility_criteria": "Students admitted to 1st year degree programme",
+            },
+        )
+        self.assertEqual(status, VerificationStatus.UNVERIFIED)
+        self.assertIn("does not match", notes)
+
     def test_fully_grounded_record_verified(self):
         """Record satisfying all conservative quality checks is marked VERIFIED."""
         status, notes = evaluate_verification_status(
@@ -237,7 +275,18 @@ class TestConservativeVerificationRules(unittest.TestCase):
             scholarship_amount="Rs. 50,000 per annum for every year of study",
             application_deadline="2026-10-31",
             eligibility_criteria=["Students admitted to 1st year degree programme with family income <= Rs. 8 lakh p.a."],
-            supporting_quotations=["Scheme provides financial assistance of Rs. 50,000 per annum."],
+            supporting_quotations=[
+                "AICTE Pragati Scholarship Scheme for Girl Students",
+                "All India Council for Technical Education",
+                "Scheme provides financial assistance of Rs. 50,000 per annum.",
+                "Students admitted to 1st year degree programme with family income <= Rs. 8 lakh p.a.",
+            ],
+            field_evidence={
+                "scheme_name": "AICTE Pragati Scholarship Scheme for Girl Students",
+                "government_authority": "All India Council for Technical Education",
+                "scholarship_amount": "Scheme provides financial assistance of Rs. 50,000 per annum.",
+                "eligibility_criteria": "Students admitted to 1st year degree programme with family income <= Rs. 8 lakh p.a.",
+            },
         )
         self.assertEqual(status, VerificationStatus.VERIFIED)
         self.assertIn("Verified:", notes)

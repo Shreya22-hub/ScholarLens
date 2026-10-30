@@ -257,9 +257,11 @@ class HTMLExtractor:
             )
         ]
         description = desc_candidates[0] if desc_candidates else context_blocks[0]
-        if len(description) < 15:
-            description = f"Official government scholarship scheme: {title} published on {source_url}."
-        field_evidence["description"] = description[:300]
+        # Do not manufacture a description from the title or URL. If the source
+        # page contains no substantive descriptive text, keep only source text;
+        # downstream quality checks will leave the record unverified.
+        description = description.strip()
+        field_evidence["description"] = description[:300] if len(description) >= 15 else ""
         if description[:300] not in supporting_quotations and len(supporting_quotations) < 4:
             supporting_quotations.append(description[:300])
 

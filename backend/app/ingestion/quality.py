@@ -352,8 +352,36 @@ def evaluate_verification_status(
         reasons.append("Eligibility criteria lack verifiable, substantive conditions")
 
     # 5. Supporting Evidence Validation
-    if not supporting_quotations or len(supporting_quotations) == 0:
+    quotations = [q.strip() for q in (supporting_quotations or []) if isinstance(q, str) and q.strip()]
+    if not quotations:
         reasons.append("Record lacks verbatim source quotations from official portal")
+
+    # 6. Field-level evidence validation. A non-empty quotation somewhere on the
+    # page is not proof for every extracted field. The ingestion pipeline passes
+    # an evidence mapping; when present, require evidence for each critical claim.
+    if field_evidence is not None:
+        required_evidence = {
+            "scheme_name": "Scheme name",
+            "government_authority": "Government authority",
+            "scholarship_amount": "Scholarship amount",
+            "eligibility_criteria": "Eligibility criteria",
+        }
+        for key, label in required_evidence.items():
+            evidence = field_evidence.get(key)
+            if not isinstance(evidence, str) or not evidence.strip():
+                reasons.append(f"{label} lacks field-level source evidence")
+                continue
+            # The field evidence must be tied to the captured page quotations,
+            # rather than being an unrelated string or a generated explanation.
+            if quotations and not any(evidence.strip() in q or q in evidence.strip() for q in quotations):
+                reasons.append(f"{label} evidence is not corroborated by supporting quotations")
+
+        amount_evidence = field_evidence.get("scholarship_amount", "")
+        if amount_valid and cleaned_amount and amount_evidence:
+            amount_digits = re.sub(r"\D", "", cleaned_amount)
+            evidence_digits = re.sub(r"\D", "", amount_evidence)
+            if amount_digits and amount_digits not in evidence_digits:
+                reasons.append("Scholarship amount does not match its field-level source evidence")
 
     # If any reason exists, mark UNVERIFIED
     if reasons:
