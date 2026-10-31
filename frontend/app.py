@@ -257,18 +257,6 @@ with tab_matcher:
                         "These results were computed using the local in-process fallback engine, not verified through the live backend API service."
                     )
 
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("🟢 Confirmed Eligible", match_res.get("eligible_count", 0))
-                m2.metric("🟡 Potentially Eligible", match_res.get("potentially_eligible_count", 0))
-                m3.metric("🔴 Not Eligible", match_res.get("not_eligible_count", 0))
-                m4.metric("⚠️ Unverified / Provisional", match_res.get("unverified_count", 0))
-
-                st.caption(
-                    "📊 **Result Categorization**: Total evaluated scholarships are partitioned into "
-                    "**Confirmed Eligible**, **Potentially Eligible**, and **Not Eligible** (sum equals total evaluated). "
-                    "**Provisional / Unverified** provides a dedicated audit view of schemes lacking primary source verification."
-                )
-
                 results = match_res.get("results", [])
                 categorized = categorize_match_results(results)
                 confirmed_eligible = categorized["confirmed_eligible"]
@@ -278,6 +266,26 @@ with tab_matcher:
                 potentially_eligible = categorized["potentially_eligible"]
                 not_eligible = categorized["not_eligible"]
                 unverified_provisional = categorized["unverified_provisional"]
+
+                # 1. Primary Outcome Metrics (clearly distinguishing application availability from eligibility)
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("🟢 Confirmed Open", len(open_confirmed))
+                m2.metric("🏛️ Historical / Unconfirmed", len(historical_closed) + len(unknown_cycle))
+                m3.metric("🟡 Potentially Eligible", len(potentially_eligible))
+                m4.metric("🔴 Not Eligible", len(not_eligible))
+
+                # 2. Data-Quality Audit Indicator (visually separated from primary outcome metrics)
+                st.info(
+                    f"🛡️ **Data-Quality Audit Indicator**: **{len(unverified_provisional)}** provisional record(s) "
+                    "with unverified source evidence are isolated in the **Provisional / Unverified** tab. "
+                    "This audit count identifies data-quality status and is not an additional category to add to the verified outcome totals."
+                )
+
+                st.caption(
+                    "📊 **Result Categorization**: Each scholarship appears in exactly one primary subtab below. "
+                    "The primary outcome metrics reflect verified scholarships evaluated against your profile. "
+                    "A scholarship matching eligibility criteria is never counted as confirmed open unless its application status is verified as open."
+                )
 
                 st.markdown("---")
                 subtab_open, subtab_hist, subtab_pot, subtab_not, subtab_prov = st.tabs([

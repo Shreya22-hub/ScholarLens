@@ -129,8 +129,9 @@ class TestFrontendHelpers(unittest.TestCase):
         self.assertEqual(len(categorized["confirmed_eligible"]), 1)
         self.assertEqual(categorized["confirmed_eligible"][0]["scheme_name"], "Verified Merit Scholarship")
 
-        # Potentially eligible contains both pending and provisional
-        self.assertEqual(len(categorized["potentially_eligible"]), 2)
+        # Potentially eligible contains only verified pending schemes (provisional schemes isolated in unverified_provisional)
+        self.assertEqual(len(categorized["potentially_eligible"]), 1)
+        self.assertEqual(categorized["potentially_eligible"][0]["scheme_name"], "Pending Info Scheme")
 
         # Not eligible
         self.assertEqual(len(categorized["not_eligible"]), 1)
@@ -139,6 +140,17 @@ class TestFrontendHelpers(unittest.TestCase):
         # Unverified provisional
         self.assertEqual(len(categorized["unverified_provisional"]), 1)
         self.assertEqual(categorized["unverified_provisional"][0]["scheme_name"], "Unverified Scheme")
+
+        # Mutually exclusive partition check
+        total_in_tabs = (
+            len(categorized["open_confirmed_eligible"])
+            + len(categorized["historical_closed_eligible"])
+            + len(categorized["unknown_cycle_eligible"])
+            + len(categorized["potentially_eligible"])
+            + len(categorized["not_eligible"])
+            + len(categorized["unverified_provisional"])
+        )
+        self.assertEqual(total_in_tabs, len(results))
 
     def test_format_deadline_display(self):
         """Test honest representation of dates."""
@@ -391,6 +403,60 @@ class TestFrontendHelpers(unittest.TestCase):
         self.assertIn(historical_match, categorized["historical_closed_eligible"])
         # Student is STRICTLY NOT in open_confirmed_eligible
         self.assertNotIn(historical_match, categorized["open_confirmed_eligible"])
+
+    def test_subtabs_are_mutually_exclusive_and_partition_all_records(self):
+        """Scenario 7: Ensure each scholarship appears in exactly one primary UI subtab without duplication."""
+        mock_results = [
+            {"scheme_name": "Open Scheme", "match_outcome": "eligible", "verification_status": "verified", "is_provisional": False, "application_status": "open"},
+            {"scheme_name": "Closed Scheme", "match_outcome": "eligible", "verification_status": "verified", "is_provisional": False, "application_status": "closed"},
+            {"scheme_name": "Unknown Cycle Scheme", "match_outcome": "eligible", "verification_status": "verified", "is_provisional": False, "application_status": "unknown"},
+            {"scheme_name": "Pending Info Scheme", "match_outcome": "potentially_eligible", "verification_status": "verified", "is_provisional": False},
+            {"scheme_name": "Ineligible Scheme", "match_outcome": "not_eligible", "verification_status": "verified", "is_provisional": False},
+            {"scheme_name": "Unverified Scheme", "match_outcome": "potentially_eligible", "verification_status": "unverified", "is_provisional": True},
+        ]
+        cat = categorize_match_results(mock_results)
+
+        # Tab 1: Open Opportunities
+        t1 = cat["open_confirmed_eligible"]
+        # Tab 2: Historical & Unconfirmed Matches
+        t2 = cat["historical_closed_eligible"] + cat["unknown_cycle_eligible"]
+        # Tab 3: Potentially Eligible (verified pending only)
+        t3 = cat["potentially_eligible"]
+        # Tab 4: Not Eligible (verified failing only)
+        t4 = cat["not_eligible"]
+        # Tab 5: Provisional / Unverified (unverified only)
+        t5 = cat["unverified_provisional"]
+
+        # Exact counts
+        self.assertEqual(len(t1), 1)
+        self.assertEqual(len(t2), 2)
+        self.assertEqual(len(t3), 1)
+        self.assertEqual(len(t4), 1)
+        self.assertEqual(len(t5), 1)
+
+        # Confirm strict mutual exclusivity: intersection between any two tabs is empty
+        names_t1 = {r["scheme_name"] for r in t1}
+        names_t2 = {r["scheme_name"] for r in t2}
+        names_t3 = {r["scheme_name"] for r in t3}
+        names_t4 = {r["scheme_name"] for r in t4}
+        names_t5 = {r["scheme_name"] for r in t5}
+
+        all_tabs = [names_t1, names_t2, names_t3, names_t4, names_t5]
+        for i in range(len(all_tabs)):
+            for j in range(i + 1, len(all_tabs)):
+                overlap = all_tabs[i].intersection(all_tabs[j])
+                self.assertEqual(overlap, set(), f"Tabs {i} and {j} overlap on {overlap}")
+
+        # Confirm tab counts sum to evaluated total
+        total_tab_records = len(t1) + len(t2) + len(t3) + len(t4) + len(t5)
+        self.assertEqual(total_tab_records, len(mock_results))
+
+        # Confirm unverified scheme is ONLY in Tab 5
+        self.assertIn("Unverified Scheme", names_t5)
+        self.assertNotIn("Unverified Scheme", names_t3)
+        self.assertNotIn("Unverified Scheme", names_t1)
+        self.assertNotIn("Unverified Scheme", names_t2)
+        self.assertNotIn("Unverified Scheme", names_t4)
 
 
 if __name__ == "__main__":
