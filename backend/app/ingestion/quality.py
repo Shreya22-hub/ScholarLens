@@ -8,11 +8,11 @@ Enforces evidence-based data quality:
 - Conservative verification rules with explicit explanatory notes
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from backend.app.schemas.scholarship import VerificationStatus
+from backend.app.schemas.scholarship import ApplicationStatus, VerificationStatus
 
 GENERIC_SCHEME_NAMES: Set[str] = {
     "fellowship",
@@ -23,6 +23,21 @@ GENERIC_SCHEME_NAMES: Set[str] = {
     "schemes",
     "student development scheme",
     "student development schemes",
+    "students development scheme",
+    "students development schemes",
+    "faculty development scheme",
+    "faculty development schemes",
+    "institutional development scheme",
+    "institutional development schemes",
+    "official scholarship scheme",
+    "official scholarship schemes",
+    "scholarship directory",
+    "scholarships directory",
+    "list of schemes",
+    "list of scholarships",
+    "scheme directory",
+    "schemes directory",
+    "all schemes",
     "central sector scheme",
     "central sector schemes",
     "state scheme",
@@ -93,6 +108,35 @@ def is_generic_scheme_name(name: Optional[str]) -> bool:
     if len(words) < 2 and len(cleaned) < 10:
         return True
 
+    # Rejection of call-to-actions, announcements, and navigation banners
+    if any(cleaned.startswith(p) for p in [
+        "explore ",
+        "welcome ",
+        "click here",
+        "apply online",
+        "view details",
+        "about us",
+        "extension of last date",
+    ]):
+        return True
+
+    # Rejection of incomplete acronym fragments without council or scheme qualifier
+    if cleaned in {"fellowship apdf", "scholarship apdf", "guidelines apdf"}:
+        return True
+
+    # Rejection of table headers / column header rows
+    if any(h in cleaned for h in [
+        "sno ",
+        "slno ",
+        "sl no",
+        "serial no",
+        "scheme authority",
+        "name of scheme",
+        "scheme name",
+        "scholarship name",
+    ]):
+        return True
+
     return False
 
 
@@ -114,6 +158,10 @@ def normalize_date_iso(date_text: Optional[str]) -> Tuple[Optional[str], Optiona
         "to be announced",
         "to be notified",
     ]:
+        return None, raw_evidence
+
+    # Reject government circular or file numbers that resemble date strings (e.g. 'O.M. F No: 12-4/2019-U1')
+    if re.search(r"(?:o\.?m\.?|f\.?\s*no|file\s*no|ref\s*no)\b", raw_evidence, re.IGNORECASE):
         return None, raw_evidence
 
     # 1. Match DD-MM-YYYY, DD/MM/YYYY, or DD.MM.YYYY
@@ -161,6 +209,171 @@ def normalize_date_iso(date_text: Optional[str]) -> Tuple[Optional[str], Optiona
     return None, raw_evidence
 
 
+def determine_application_status(
+    deadline_iso: Optional[str] = None,
+    raw_text: Optional[str] = None,
+    reference_date: Optional[datetime] = None,
+) -> Tuple[str, Optional[str]]:
+    """Determine application status and academic year from extracted dates and source text.
+
+    Distinguishes:
+    - "open": explicitly open application window or opening_date <= today <= closing_date
+    - "deadline_published_status_unknown": future deadline published without confirmed opening dates
+    - "expired": published deadline has passed
+    - "closed": circular/batch explicitly closed, past academic cycle, or selection merit list
+    - "unknown": missing dates, ambiguous periods, or conflicting status statements
+
+    Returns:
+        (application_status, scheme_year)
+    """
+    ref_dt = reference_date or datetime.now(timezone.utc)
+    ref_date = ref_dt.date() if isinstance(ref_dt, datetime) else ref_dt
+
+    combined_text = (raw_text or "")
+    scheme_year = None
+
+    # Detect academic year (e.g. 2026-27, 2026–27, 2024-25, 2019-2020)
+    year_match = re.search(r"\b(20\d{2}\s*[-–/]\s*(?:20\d{2}|\d{2}))\b", combined_text)
+    if year_match:
+        scheme_year = re.sub(r"\s+", "", year_match.group(1)).replace("–", "-")
+
+    lower_text = combined_text.lower()
+
+    # 1. Detect conflicting status evidence
+    has_explicit_open = bool(
+        re.search(
+            r"\b(now open for receiving|portal (?:is )?(?:now )?open|applications (?:are )?(?:currently )?(?:now )?open|portal is open for registration|inviting online applications)\b",
+            lower_text,
+        )
+    )
+    has_explicit_closed = bool(
+        re.search(
+            r"\b(applications? (?:are )?(?:now )?closed|portal (?:is )?closed|closed for new applications|admissions? closed|process concluded|submission closed)\b",
+            lower_text,
+        )
+    )
+    if has_explicit_open and has_explicit_closed:
+        return ApplicationStatus.UNKNOWN.value, scheme_year
+
+    # 2. Check for past completed cycles / archived batches / merit lists
+    if any(k in lower_text for k in ["batch 2019", "batch 2018", "batch 2017", "batch 2016", "batch 2015", "batch 2014"]):
+        return ApplicationStatus.CLOSED.value, scheme_year
+
+    if "merit list" in lower_text and any(y in lower_text for y in ["2024", "2023", "2022", "2021", "2020"]):
+        return ApplicationStatus.CLOSED.value, scheme_year
+
+    # 3. Date extraction with explicit separation of:
+    # A. Opening date for student submissions
+    # B. Student application submission closing deadline
+    # C. Institutional/SNO verification milestones (never treated as student deadlines)
+    # D. Final portal closure date
+    has_verification_milestones = bool(
+        re.search(
+            r"\b(verification of applications?|verification by institutes?|sno verification|l1 level|l2 level)\b",
+            lower_text,
+        )
+    )
+
+    # Detect opening date for students
+    opening_date = None
+    m_open = re.search(
+        r"(?:opening of portal(?: for students?)?|portal opens?(?: for students?)?|start(?:ing)? date|commencement|open(?:s|ed)? (?:on|from))[^\w\d]*([^\n;,\.]{4,40})",
+        combined_text,
+        re.I,
+    )
+    if m_open:
+        iso_open, _ = normalize_date_iso(m_open.group(1))
+        if iso_open:
+            try:
+                opening_date = datetime.strptime(iso_open, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+
+    # Detect student application submission deadline
+    student_submission_deadline = None
+    if deadline_iso:
+        try:
+            student_submission_deadline = datetime.strptime(deadline_iso, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+
+    if not student_submission_deadline:
+        student_close_patterns = [
+            r"(?:last date for (?:submission|applying|online applications?)|submission deadline|student submission closing date)\s*[:\-]?\s*([^\n;]{4,40})",
+            r"(?:closing date for (?:submission|students?)|last date of application)\s*[:\-]?\s*([^\n;]{4,40})",
+        ]
+        for cpat in student_close_patterns:
+            for mc in re.finditer(cpat, combined_text, re.I):
+                matched_line = mc.group(0).lower()
+                # Reject verification milestones and administrative scrutiny
+                if any(v in matched_line for v in ["verification", "scrutiny", "l1 level", "l2 level", "sno level", "discrepanc"]):
+                    continue
+                iso_close, _ = normalize_date_iso(mc.group(1))
+                if iso_close:
+                    try:
+                        student_submission_deadline = datetime.strptime(iso_close, "%Y-%m-%d").date()
+                        break
+                    except ValueError:
+                        pass
+            if student_submission_deadline:
+                break
+
+    # Detect final portal closure date (if distinct from submission deadline)
+    final_portal_closure = None
+    m_pclose = re.search(
+        r"(?:portal to be closed on|to be closed on)\s*[:\-]?\s*([^\n;]{4,40})",
+        combined_text,
+        re.I,
+    )
+    if m_pclose:
+        iso_pclose, _ = normalize_date_iso(m_pclose.group(1))
+        if iso_pclose:
+            try:
+                final_portal_closure = datetime.strptime(iso_pclose, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+
+    # 4. Evaluate status based on dates
+    # Rule 1: If institutional verification milestones exist but no student submission deadline
+    # was established, do NOT infer that student applications are open.
+    if has_verification_milestones and not student_submission_deadline and not has_explicit_open:
+        return ApplicationStatus.UNKNOWN.value, scheme_year
+
+    effective_deadline = student_submission_deadline or final_portal_closure
+
+    if effective_deadline:
+        if effective_deadline < ref_date:
+            return ApplicationStatus.EXPIRED.value, scheme_year
+        else:
+            # Future deadline exists (effective_deadline >= ref_date)
+            # A future deadline does not, by itself, prove applications are currently open.
+            # Check if student submission window is verified
+            if student_submission_deadline and opening_date:
+                if opening_date <= ref_date <= student_submission_deadline:
+                    return ApplicationStatus.OPEN.value, scheme_year
+                elif opening_date > ref_date:
+                    return ApplicationStatus.DEADLINE_PUBLISHED_STATUS_UNKNOWN.value, scheme_year
+
+            # If opening date is not explicitly available, check for explicit open affirmation
+            if has_explicit_open:
+                return ApplicationStatus.OPEN.value, scheme_year
+
+            # Future deadline is published, but current student opening status is unconfirmed
+            return ApplicationStatus.DEADLINE_PUBLISHED_STATUS_UNKNOWN.value, scheme_year
+
+    # 5. No effective deadline established
+    if has_explicit_open:
+        if opening_date and opening_date > ref_date:
+            return ApplicationStatus.DEADLINE_PUBLISHED_STATUS_UNKNOWN.value, scheme_year
+        return ApplicationStatus.OPEN.value, scheme_year
+
+    if has_explicit_closed:
+        return ApplicationStatus.CLOSED.value, scheme_year
+
+    # Missing dates or unconfirmed status
+    return ApplicationStatus.UNKNOWN.value, scheme_year
+
+
 def clean_and_validate_amount(amount_text: Optional[str]) -> Tuple[Optional[str], bool, Optional[str]]:
     """Clean and validate scholarship amount.
 
@@ -205,7 +418,10 @@ def clean_and_validate_amount(amount_text: Optional[str]) -> Tuple[Optional[str]
         return None, False, f"Amount text '{cleaned}' does not contain recognizable Indian currency format."
 
     matched_amount = m.group(0).strip()
-    raw_num_str = m.group(1).replace(",", "")
+    raw_num_str = m.group(1).replace(",", "").strip()
+
+    if not raw_num_str or not re.search(r"\d", raw_num_str):
+        return None, False, f"Amount text '{cleaned}' lacks numeric currency digits."
 
     try:
         raw_num = float(raw_num_str)
@@ -223,7 +439,7 @@ def clean_and_validate_amount(amount_text: Optional[str]) -> Tuple[Optional[str]
                 f"Extracted amount '{matched_amount}' failed sanity check (< Rs. 500). Likely a token fee or malformed token.",
             )
     except ValueError:
-        pass
+        return None, False, f"Could not parse numeric amount from '{raw_num_str}'."
 
     return matched_amount, True, None
 

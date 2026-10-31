@@ -16,6 +16,7 @@ from frontend.helpers import (
     categorize_match_results,
     evaluate_student_matching,
     format_amount_display,
+    format_application_status_display,
     format_deadline_display,
     validate_and_build_profile,
 )
@@ -338,8 +339,8 @@ with tab_matcher:
                                 for u in unknown:
                                     st.markdown(f"- `{u.get('criterion_type').upper()}`: {u.get('reason')}")
 
-                        # Honest amount and deadline display
-                        col_amt, col_dead, col_url = st.columns(3)
+                        # Honest amount, deadline, and application cycle display
+                        col_amt, col_dead, col_stat = st.columns(3)
                         with col_amt:
                             amt_display = format_amount_display(
                                 r.get("scholarship_amount"),
@@ -356,9 +357,16 @@ with tab_matcher:
                             st.write(f"📅 **Deadline**: `{dead_disp}`")
                             if dead_caption:
                                 st.caption(dead_caption)
-                        with col_url:
-                            url = r.get("official_source_url")
-                            st.write(f"🔗 **Source**: [{url}]({url})")
+                        with col_stat:
+                            app_badge, app_help = format_application_status_display(
+                                r.get("application_status"),
+                                r.get("scheme_year"),
+                            )
+                            st.write(f"⏱️ **Application Cycle**: `{app_badge}`")
+                            st.caption(app_help)
+
+                        url = r.get("official_source_url")
+                        st.write(f"🔗 **Source**: [{url}]({url})")
 
                         evidence = r.get("evidence_references", {})
                         if evidence:
@@ -469,6 +477,10 @@ with tab_scholarships:
                     st.write(f"📅 **Application Deadline**: `{dead_disp}`")
                     if dead_cap:
                         st.caption(dead_cap)
+
+                    app_badge, app_help = format_application_status_display(item.get("application_status"), item.get("scheme_year"))
+                    st.write(f"⏱️ **Application Cycle**: `{app_badge}`")
+                    st.caption(app_help)
 
                 with c2:
                     st.write(f"🔗 **Official Source**: [{item.get('official_source_url')}]({item.get('official_source_url')})")

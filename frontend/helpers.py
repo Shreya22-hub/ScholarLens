@@ -193,6 +193,30 @@ def format_amount_display(
     return amount_clean
 
 
+def format_application_status_display(
+    application_status: Optional[str],
+    scheme_year: Optional[str] = None,
+) -> Tuple[str, str]:
+    """Format application cycle status with clear distinction from verification status.
+
+    Returns:
+        (badge_text, caption_or_help)
+    """
+    status = (application_status or "unknown").strip().lower()
+    year_suffix = f" ({scheme_year})" if scheme_year else ""
+
+    if status == "open":
+        return f"🟢 Open for Applications{year_suffix}", "Applications currently accepted as established by official circular."
+    elif status == "deadline_published_status_unknown":
+        return f"🟡 Deadline Published (Status Unconfirmed){year_suffix}", "A future deadline is published, but official opening dates or acceptance status are unconfirmed."
+    elif status == "closed":
+        return f"🔴 Closed / Past Cycle{year_suffix}", "This application cycle is closed. Documented historically from official records."
+    elif status == "expired":
+        return f"🔴 Expired / Deadline Passed{year_suffix}", "The official application submission deadline has passed."
+    else:
+        return f"⚪ Status Unknown / Unconfirmed{year_suffix}", "Application cycle dates are not published or unconfirmed in official circular."
+
+
 def evaluate_student_matching(
     profile_data: Dict[str, Any],
     backend_url: str = "http://127.0.0.1:8000",

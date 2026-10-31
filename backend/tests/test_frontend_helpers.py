@@ -17,6 +17,7 @@ from frontend.helpers import (
     categorize_match_results,
     evaluate_student_matching,
     format_amount_display,
+    format_application_status_display,
     format_deadline_display,
     validate_and_build_profile,
 )
@@ -227,6 +228,28 @@ class TestFrontendHelpers(unittest.TestCase):
             self.assertFalse(success)
             self.assertIn("API Validation Error", err)
             self.assertIsNone(res)
+
+    def test_format_application_status_display(self):
+        """Test honest display of application statuses without confusing verification status."""
+        badge_open, help_open = format_application_status_display("open", "2026-27")
+        self.assertIn("🟢 Open for Applications (2026-27)", badge_open)
+        self.assertIn("accepted", help_open)
+
+        badge_unconfirmed, _ = format_application_status_display("deadline_published_status_unknown", "2026-27")
+        self.assertIn("🟡 Deadline Published (Status Unconfirmed) (2026-27)", badge_unconfirmed)
+
+        badge_closed, help_closed = format_application_status_display("closed", "2019-2020")
+        self.assertIn("🔴 Closed / Past Cycle (2019-2020)", badge_closed)
+        self.assertIn("historically", help_closed)
+
+        badge_expired, _ = format_application_status_display("expired")
+        self.assertIn("🔴 Expired / Deadline Passed", badge_expired)
+
+        badge_unk, _ = format_application_status_display("unknown")
+        self.assertIn("⚪ Status Unknown / Unconfirmed", badge_unk)
+
+        badge_none, _ = format_application_status_display(None)
+        self.assertIn("⚪ Status Unknown / Unconfirmed", badge_none)
 
 
 if __name__ == "__main__":

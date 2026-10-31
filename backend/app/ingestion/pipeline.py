@@ -13,6 +13,7 @@ from backend.app.db.database import Database, get_db
 from backend.app.ingestion.extractors.html_extractor import HTMLExtractor
 from backend.app.ingestion.extractors.pdf_extractor import PDFExtractor
 from backend.app.ingestion.fetcher import FetchResult, PoliteFetcher
+from backend.app.ingestion.link_follower import fetch_guideline_document, is_allowed_guideline_url
 from backend.app.ingestion.quality import evaluate_verification_status
 from backend.app.ingestion.registry import SourceRegistry
 from backend.app.schemas.scholarship import (
@@ -119,6 +120,52 @@ class IngestionPipeline:
                 source_url=url_str,
                 default_authority=source.authority,
             )
+
+            # Discover and safely retrieve official guideline documents on verified government domains
+            guideline_links = HTMLExtractor.extract_guideline_links(
+                html_content=html_text,
+                base_url=url_str,
+            )
+
+            followed_count = 0
+            for g_item in guideline_links:
+                g_url = g_item["url"]
+                # Enforce domain policy: must belong to registered source or official government domain
+                is_allowed, reason = is_allowed_guideline_url(g_url, source_url=url_str)
+                if not is_allowed:
+                    continue
+
+                # Enforce robots.txt policy
+                if not self.fetcher.can_fetch(g_url, client=client):
+                    continue
+
+                g_fetch = fetch_guideline_document(
+                    url=g_url,
+                    source_id=source_id,
+                    fetcher=self.fetcher,
+                    source_url=url_str,
+                    client=client,
+                )
+
+                if g_fetch.success and g_fetch.content_bytes:
+                    is_g_pdf = (
+                        "application/pdf" in (g_fetch.content_type or "").lower()
+                        or g_url.lower().endswith(".pdf")
+                        or g_fetch.content_bytes[:4] == b"%PDF"
+                    )
+                    if is_g_pdf:
+                        guideline_candidates = PDFExtractor.extract_scholarships_from_pdf(
+                            pdf_bytes=g_fetch.content_bytes,
+                            source_url=g_url,
+                            default_authority=source.authority,
+                        )
+                        for gc in guideline_candidates:
+                            gc["guideline_url"] = g_url
+                            candidate_records_raw.append(gc)
+
+                        followed_count += 1
+                        if followed_count >= 5:
+                            break
 
         # 4. Strict Validation and Conservative Verification Assignment
         saved_records: List[ScholarshipRecord] = []

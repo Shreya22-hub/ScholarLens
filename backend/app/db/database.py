@@ -7,6 +7,7 @@ and extracted scholarship records with duplicate prevention.
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -98,7 +99,7 @@ class Database:
                 """
             )
 
-            # Scholarship records table with UNIQUE constraint on (official_source_url, scheme_name)
+            # Scholarship records table with academic-year-aware uniqueness
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS scholarship_records (
@@ -118,9 +119,12 @@ class Database:
                     last_verified_timestamp TEXT,
                     verification_status TEXT NOT NULL DEFAULT 'unverified',
                     verification_notes TEXT,
+                    scheme_year TEXT,
+                    application_status TEXT,
+                    guideline_url TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    UNIQUE(official_source_url, scheme_name)
+                    UNIQUE(official_source_url, scheme_name, scheme_year)
                 )
                 """
             )
@@ -130,6 +134,9 @@ class Database:
                 ("application_deadline_raw", "TEXT"),
                 ("field_evidence", "TEXT"),
                 ("verification_notes", "TEXT"),
+                ("scheme_year", "TEXT"),
+                ("application_status", "TEXT"),
+                ("guideline_url", "TEXT"),
             ]:
                 try:
                     cursor.execute(f"ALTER TABLE scholarship_records ADD COLUMN {col} {col_type}")
@@ -140,9 +147,15 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_records_url_scheme ON scholarship_records(official_source_url, scheme_name)"
             )
             cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_records_url_scheme_year ON scholarship_records(official_source_url, scheme_name, ifnull(scheme_year, ''))"
+            )
+            cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_ingestion_source ON ingestion_runs(source_id, fetched_at)"
             )
             conn.commit()
+
+        # Migrate legacy uniqueness constraint if table was created with previous schema
+        self.migrate_legacy_uniqueness_constraint()
 
         # Audit and reverify existing records against conservative rules
         self.audit_and_reverify_stored_records()
@@ -366,17 +379,29 @@ class Database:
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id FROM scholarship_records
-                WHERE official_source_url = ? AND scheme_name = ?
-                """,
-                (url_str, record.scheme_name),
-            )
+            if record.scheme_year:
+                cursor.execute(
+                    """
+                    SELECT id FROM scholarship_records
+                    WHERE official_source_url = ? AND scheme_name = ? AND scheme_year = ?
+                    """,
+                    (url_str, record.scheme_name, record.scheme_year),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id FROM scholarship_records
+                    WHERE official_source_url = ? AND scheme_name = ? AND (scheme_year IS NULL OR scheme_year = '')
+                    """,
+                    (url_str, record.scheme_name),
+                )
             existing = cursor.fetchone()
 
             if existing:
                 record_id = existing["id"]
+                effective_verified_ts = (
+                    last_verified_str if record.verification_status == VerificationStatus.VERIFIED else None
+                )
                 cursor.execute(
                     """
                     UPDATE scholarship_records
@@ -390,9 +415,12 @@ class Database:
                         required_documents = ?,
                         supporting_quotations = ?,
                         field_evidence = ?,
-                        last_verified_timestamp = COALESCE(?, last_verified_timestamp),
+                        last_verified_timestamp = ?,
                         verification_status = ?,
                         verification_notes = ?,
+                        scheme_year = ?,
+                        application_status = ?,
+                        guideline_url = ?,
                         updated_at = ?
                     WHERE id = ?
                     """,
@@ -407,9 +435,12 @@ class Database:
                         documents_json,
                         quotations_json,
                         field_evidence_json,
-                        last_verified_str,
+                        effective_verified_ts,
                         record.verification_status.value,
                         record.verification_notes,
+                        record.scheme_year,
+                        record.application_status,
+                        record.guideline_url,
                         now,
                         record_id,
                     ),
@@ -425,8 +456,9 @@ class Database:
                         eligibility_criteria, scholarship_amount, application_deadline,
                         application_deadline_raw, required_documents, official_source_url,
                         supporting_quotations, field_evidence, last_verified_timestamp,
-                        verification_status, verification_notes, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        verification_status, verification_notes, scheme_year,
+                        application_status, guideline_url, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         source_id,
@@ -444,6 +476,9 @@ class Database:
                         last_verified_str,
                         record.verification_status.value,
                         record.verification_notes,
+                        record.scheme_year,
+                        record.application_status,
+                        record.guideline_url,
                         now,
                         now,
                     ),
@@ -497,6 +532,9 @@ class Database:
             last_verified_timestamp=_from_iso(row["last_verified_timestamp"]),
             verification_status=VerificationStatus(row["verification_status"]),
             verification_notes=row["verification_notes"] if "verification_notes" in keys else None,
+            scheme_year=row["scheme_year"] if "scheme_year" in keys else None,
+            application_status=row["application_status"] if "application_status" in keys else None,
+            guideline_url=row["guideline_url"] if "guideline_url" in keys else None,
         )
 
     def audit_and_reverify_stored_records(self) -> None:
@@ -560,6 +598,91 @@ class Database:
                         (s_id,),
                     )
             conn.commit()
+
+    def migrate_legacy_uniqueness_constraint(self) -> bool:
+        """Migrate a database created with legacy UNIQUE(official_source_url, scheme_name)
+        to academic-year-aware uniqueness UNIQUE(official_source_url, scheme_name, scheme_year).
+
+        Safely preserves all existing records, IDs, text fields, and timestamps.
+        Returns True if a migration was performed, False if already up to date.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='scholarship_records'"
+            )
+            row = cursor.fetchone()
+            if not row or not row["sql"]:
+                return False
+
+            sql = row["sql"]
+            # Check if table has the obsolete constraint without scheme_year
+            has_legacy = bool(
+                re.search(
+                    r"UNIQUE\s*\(\s*[`\"]?official_source_url[`\"]?\s*,\s*[`\"]?scheme_name[`\"]?\s*\)",
+                    sql,
+                    re.IGNORECASE,
+                )
+            )
+            if not has_legacy:
+                return False
+
+            # Create new table with updated constraint
+            cursor.execute(
+                """
+                CREATE TABLE scholarship_records_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id TEXT,
+                    scheme_name TEXT NOT NULL,
+                    government_authority TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    eligibility_criteria TEXT NOT NULL,
+                    scholarship_amount TEXT,
+                    application_deadline TEXT,
+                    application_deadline_raw TEXT,
+                    required_documents TEXT NOT NULL,
+                    official_source_url TEXT NOT NULL,
+                    supporting_quotations TEXT NOT NULL,
+                    field_evidence TEXT,
+                    last_verified_timestamp TEXT,
+                    verification_status TEXT NOT NULL DEFAULT 'unverified',
+                    verification_notes TEXT,
+                    scheme_year TEXT,
+                    application_status TEXT,
+                    guideline_url TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(official_source_url, scheme_name, scheme_year)
+                )
+                """
+            )
+
+            cursor.execute("PRAGMA table_info(scholarship_records)")
+            old_cols = [col["name"] for col in cursor.fetchall()]
+            target_cols = [
+                "id", "source_id", "scheme_name", "government_authority", "description",
+                "eligibility_criteria", "scholarship_amount", "application_deadline",
+                "application_deadline_raw", "required_documents", "official_source_url",
+                "supporting_quotations", "field_evidence", "last_verified_timestamp",
+                "verification_status", "verification_notes", "scheme_year",
+                "application_status", "guideline_url", "created_at", "updated_at",
+            ]
+            common_cols = [c for c in target_cols if c in old_cols]
+            cols_str = ", ".join(common_cols)
+
+            cursor.execute(
+                f"INSERT INTO scholarship_records_v2 ({cols_str}) SELECT {cols_str} FROM scholarship_records"
+            )
+            cursor.execute("DROP TABLE scholarship_records")
+            cursor.execute("ALTER TABLE scholarship_records_v2 RENAME TO scholarship_records")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_records_url_scheme ON scholarship_records(official_source_url, scheme_name)"
+            )
+            cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_records_url_scheme_year ON scholarship_records(official_source_url, scheme_name, ifnull(scheme_year, ''))"
+            )
+            conn.commit()
+            return True
 
 
 _db_instance: Optional[Database] = None

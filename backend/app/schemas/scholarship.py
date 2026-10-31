@@ -19,6 +19,16 @@ class VerificationStatus(str, Enum):
     EXPIRED = "expired"
 
 
+class ApplicationStatus(str, Enum):
+    """Enumeration of possible application cycle states."""
+
+    OPEN = "open"
+    DEADLINE_PUBLISHED_STATUS_UNKNOWN = "deadline_published_status_unknown"
+    CLOSED = "closed"
+    EXPIRED = "expired"
+    UNKNOWN = "unknown"
+
+
 class SourceType(str, Enum):
     """Type of source document."""
 
@@ -127,6 +137,18 @@ class ScholarshipRecord(BaseModel):
     verification_notes: Optional[str] = Field(
         default=None,
         description="Transparent explanation of verification status or why fields remain unverified.",
+    )
+    scheme_year: Optional[str] = Field(
+        default=None,
+        description="Academic year or cycle for the scheme (e.g. 2026-27).",
+    )
+    application_status: Optional[str] = Field(
+        default=ApplicationStatus.UNKNOWN.value,
+        description="Current application status: open, deadline_published_status_unknown, closed, expired, or unknown.",
+    )
+    guideline_url: Optional[str] = Field(
+        default=None,
+        description="Direct URL to official guidelines or notification document if followed.",
     )
 
     @field_validator("scheme_name", "government_authority", "description")

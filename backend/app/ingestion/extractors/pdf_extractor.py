@@ -16,6 +16,7 @@ import zlib
 from backend.app.ingestion.quality import (
     clean_and_validate_amount,
     clean_eligibility_criteria,
+    determine_application_status,
     is_generic_scheme_name,
     normalize_date_iso,
 )
@@ -129,19 +130,108 @@ class PDFExtractor:
             return []
 
         # Find specific non-generic scheme title
+        narrative_prefixes = (
+            "the main objective",
+            "the objective",
+            "in order to",
+            "a scholarship scheme",
+            "this scheme",
+            "to provide",
+            "financial assistance to",
+            "guidelines and",
+            "general instructions",
+            "read more",
+        )
+
+        # 1. Search individual clean layout lines for concise titles
+        line_candidates = []
+        for l in lines[:25]:
+            l_clean = re.sub(r"^(?:REVISED\s+)?SCHEME\s+GUIDELINES\s+FOR\s+", "", l, flags=re.IGNORECASE).strip()
+            l_clean = re.sub(r"^NOTIFICATION\s*[:-]?\s*", "", l_clean, flags=re.IGNORECASE).strip()
+            l_lower = l_clean.lower()
+            if any(l_lower.startswith(pref) for pref in narrative_prefixes):
+                continue
+            if any(l_lower.startswith(lbl) for lbl in ["scholarship amount", "eligibility", "application deadline", "documents", "last date"]):
+                continue
+            if re.match(r"^[\d\.\-\*•\uf0b7]", l_clean) or re.search(r"(?:rs\.?|₹|\$)\s*[\d,]", l_clean, re.I):
+                continue
+            if not is_generic_scheme_name(l_clean) and 8 <= len(l_clean) <= 100:
+                if any(
+                    k in l_lower
+                    for k in [
+                        "scheme of scholarship",
+                        "central sector scheme",
+                        "scholarship for",
+                        "guidelines for",
+                        "fellowship",
+                        "scholarship",
+                        "yashasvi",
+                        "sarswati",
+                        "samarthan",
+                        "apdf",
+                    ]
+                ):
+                    line_candidates.append(l_clean)
+
         scheme_title = None
-        for p in paragraphs[:15]:
-            p_lower = p.lower()
-            if not is_generic_scheme_name(p) and any(
-                k in p_lower for k in ["scheme of scholarship", "central sector scheme", "scholarship for", "guidelines for"]
-            ):
-                scheme_title = p[:150].strip()
-                break
+        if line_candidates:
+            line_candidates.sort(
+                key=lambda x: (
+                    any(org in x.upper() for org in ["AICTE", "UGC", "CENTRAL", "NATIONAL", "GOVERNMENT"]),
+                    -abs(len(x) - 40),
+                ),
+                reverse=True,
+            )
+            scheme_title = line_candidates[0]
+
+        if not scheme_title:
+            candidates_title = []
+            for p in paragraphs[:15]:
+                p_clean = re.sub(r"^(?:REVISED\s+)?SCHEME\s+GUIDELINES\s+FOR\s+", "", p, flags=re.IGNORECASE).strip()
+                p_clean = re.sub(r"^NOTIFICATION\s*[:-]?\s*", "", p_clean, flags=re.IGNORECASE).strip()
+                p_lower = p_clean.lower()
+                if any(p_lower.startswith(pref) for pref in narrative_prefixes):
+                    continue
+                if any(p_lower.startswith(lbl) for lbl in ["scholarship amount", "eligibility", "application deadline", "documents", "last date"]):
+                    continue
+                if re.match(r"^[\d\.\-\*•\uf0b7]", p_clean) or re.search(r"(?:rs\.?|₹|\$)\s*[\d,]", p_clean, re.I):
+                    continue
+                if not is_generic_scheme_name(p_clean) and len(p_clean) >= 6:
+                    if any(
+                        k in p_lower
+                        for k in [
+                            "scheme of scholarship",
+                            "central sector scheme",
+                            "scholarship for",
+                            "guidelines for",
+                            "fellowship",
+                            "scholarship",
+                            "yashasvi",
+                            "sarswati",
+                            "samarthan",
+                            "apdf",
+                        ]
+                    ):
+                        candidates_title.append(p_clean)
+
+            if candidates_title:
+                candidates_title.sort(
+                    key=lambda x: (
+                        any(org in x.upper() for org in ["AICTE", "UGC", "CENTRAL", "NATIONAL", "GOVERNMENT"]),
+                        -len(x) if len(x) > 80 else len(x),
+                    ),
+                    reverse=True,
+                )
+                scheme_title = candidates_title[0][:150].strip()
 
         if not scheme_title:
             for p in paragraphs[:10]:
-                if not is_generic_scheme_name(p) and any(k in p.lower() for k in ["scholarship", "fellowship"]) and len(p) < 100:
-                    scheme_title = p.strip()
+                p_clean = re.sub(r"^(?:REVISED\s+)?SCHEME\s+GUIDELINES\s+FOR\s+", "", p, flags=re.IGNORECASE).strip()
+                p_lower = p_clean.lower()
+                if any(p_lower.startswith(pref) for pref in narrative_prefixes):
+                    continue
+                if not is_generic_scheme_name(p_clean) and any(k in p_lower for k in ["scholarship", "fellowship"]) and len(p_clean) < 100:
+                    scheme_title = p_clean.strip()
                     break
 
         if not scheme_title or is_generic_scheme_name(scheme_title):
@@ -150,31 +240,84 @@ class PDFExtractor:
         field_evidence: Dict[str, str] = {"scheme_name": scheme_title}
         supporting_quotations: List[str] = [scheme_title]
 
+        # Extract government authority evidence from document paragraphs
+        authority_quote = None
+        for p in paragraphs[:20]:
+            p_upper = p.upper()
+            if any(term in p_upper for term in ["COUNCIL", "MINISTRY", "DEPARTMENT", "COMMISSION", "GOVERNMENT OF INDIA"]):
+                if len(p) >= 10 and len(p) <= 250:
+                    authority_quote = p.strip()
+                    break
+
+        if not authority_quote:
+            # Search for authority mentions like AICTE or Government of India in text
+            for p in paragraphs:
+                p_upper = p.upper()
+                if any(term in p_upper for term in ["ALL INDIA COUNCIL FOR TECHNICAL EDUCATION", "AICTE", "UGC", "MINISTRY OF EDUCATION"]):
+                    if len(p) >= 10 and len(p) <= 250:
+                        authority_quote = p.strip()
+                        break
+
+        authority_final = default_authority
+        if authority_quote:
+            field_evidence["government_authority"] = authority_quote
+            if authority_quote not in supporting_quotations:
+                supporting_quotations.append(authority_quote)
+        else:
+            field_evidence["government_authority"] = default_authority
+            supporting_quotations.append(default_authority)
+
         # Extract eligibility
         raw_eligibility: List[str] = []
-        for p in paragraphs:
+        for p in paragraphs + lines:
             p_lower = p.lower()
-            if any(term in p_lower for term in ["eligibility", "eligible", "minimum marks", "family income", "percentile"]):
-                if len(p) > 20 and p not in raw_eligibility:
+            if any(
+                term in p_lower
+                for term in [
+                    "eligibility",
+                    "eligible",
+                    "minimum marks",
+                    "family income",
+                    "percentile",
+                    "candidates who",
+                    "scholars who",
+                    "students who",
+                    "ph.d",
+                    "degree in",
+                    "degree from",
+                    "admission in",
+                    "girls students",
+                ]
+            ):
+                if 20 <= len(p) <= 300 and p not in raw_eligibility:
                     raw_eligibility.append(p[:250])
                     if "eligibility_criteria" not in field_evidence:
                         field_evidence["eligibility_criteria"] = p[:300]
-                    if len(supporting_quotations) < 4 and p not in supporting_quotations:
+                    if len(supporting_quotations) < 6 and p not in supporting_quotations:
                         supporting_quotations.append(p[:300])
 
         cleaned_eligibility = clean_eligibility_criteria(raw_eligibility)
 
-        # Extract amount prioritizing explicit scholarship amount over family income limits
+        # Extract amount prioritizing explicit scholarship amount or fellowship tables over family income limits
         raw_amount = None
-        pat_explicit = r"(?i)(?:scholarship amount|rate of scholarship|stipend|allowance)\s*[:\-]\s*([^\n;]+)"
+        amount_quote = None
+
+        pat_budget_table = r"(?i)(?:fellowship|scholarship|stipend)\s+(?:amount\s+)?(rs\.?\s*[\d,]+(?:\s*/?-?\s*per\s+[a-z]+)?[^\n;]*)"
         for p in paragraphs:
-            m = re.search(pat_explicit, p)
+            m = re.search(pat_budget_table, p)
             if m:
                 raw_amount = m.group(1).strip()
-                field_evidence["scholarship_amount"] = p[:300]
-                if p not in supporting_quotations and len(supporting_quotations) < 4:
-                    supporting_quotations.append(p[:300])
+                amount_quote = p[:300]
                 break
+
+        if not raw_amount:
+            pat_explicit = r"(?i)(?:scholarship amount|rate of scholarship|stipend|allowance)\s*[:\-]\s*([^\n;]+)"
+            for p in paragraphs:
+                m = re.search(pat_explicit, p)
+                if m:
+                    raw_amount = m.group(1).strip()
+                    amount_quote = p[:300]
+                    break
 
         if not raw_amount:
             pat_currency = r"(?i)(?:rs\.?|₹)\s*[\d,]+(?:\s*(?:per|p\.?a\.?|per annum|per month|yearly|monthly|lakh|crore)[^\n,.;]*)?"
@@ -184,31 +327,54 @@ class PDFExtractor:
                 m = re.search(pat_currency, p)
                 if m:
                     raw_amount = m.group(0).strip()
-                    field_evidence["scholarship_amount"] = p[:300]
-                    if p not in supporting_quotations and len(supporting_quotations) < 4:
-                        supporting_quotations.append(p[:300])
+                    amount_quote = p[:300]
                     break
 
         # Validate amount against sanity rules
         validated_amount, amount_is_valid, _ = clean_and_validate_amount(raw_amount)
         amount_final = validated_amount if amount_is_valid else None
+        if amount_final and amount_quote:
+            field_evidence["scholarship_amount"] = amount_quote
+            if amount_quote not in supporting_quotations:
+                supporting_quotations.append(amount_quote)
 
-        # Extract deadline
+        # Check if circular describes multi-stage verification or institutional workflow
+        has_multi_stage_workflow = any(
+            re.search(r"\b(?:verification (?:of|by)|l1 level|l2 level|sno level)\b", p, re.IGNORECASE)
+            for p in paragraphs + lines
+        )
+
+        # Extract student submission deadline avoiding OM / file numbers, institutional verification, and final shutdown dates
         raw_deadline = None
         deadline_patterns = [
-            r"(?:last date|deadline|closing date|closing dates)(?:\s*is|\s*for submission)?\s*[:\-]?\s*([^\n.;]{4,60})",
+            r"(?:last date for (?:submission|applying|online applications?)|submission deadline)\s*[:\-]?\s*([^\n.;]{4,60})",
+            r"(?:closing date for (?:submission|students?)|student submission closing date)\s*[:\-]?\s*([^\n.;]{4,60})",
+            r"(?:last date of application|deadline for applications?)(?:\s*is)?\s*[:\-]?\s*([^\n.;]{4,60})",
+            r"(?:portal to be closed on|to be closed on|closed on)\s*[:\-]?\s*([^\n.;]{4,60})",
+            r"(?:last date|deadline|closing date)(?:\s*is)?\s*[:\-]?\s*([^\n.;]{4,60})",
             r"(?:up to|till)\s*(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4})",
-            r"(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4})",
+            r"(?<!F No:\s)(?<!No:\s)(\b\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4}\b)",
         ]
-        for p in paragraphs:
+        for p in paragraphs + lines:
+            # Skip lines that are specifically institute verification, scrutiny, or discrepancy resolution
+            if re.search(r"\b(?:verification (?:of|by)|scrutiny|sno level|l1 level|l2 level|discrepanc)\b", p, flags=re.IGNORECASE):
+                continue
+            if has_multi_stage_workflow and re.search(r"\b(?:portal to be closed|final closure)\b", p, re.IGNORECASE):
+                # In multi-stage circulars, final portal closure is after administrative verification, not student submission
+                continue
             for pat in deadline_patterns:
                 m = re.search(pat, p, flags=re.IGNORECASE)
                 if m:
-                    raw_deadline = m.group(0).strip()
-                    field_evidence["application_deadline"] = p[:300]
-                    if p not in supporting_quotations and len(supporting_quotations) < 4:
-                        supporting_quotations.append(p[:300])
-                    break
+                    candidate_dl = m.group(0).strip()
+                    if not re.search(r"(?:o\.?m\.?|f\.?\s*no|file\s*no)\b", candidate_dl, re.IGNORECASE):
+                        if not re.search(r"\b(?:verification|scrutiny|sno|l1|l2|discrepanc)\b", candidate_dl, re.IGNORECASE):
+                            if has_multi_stage_workflow and re.search(r"\b(?:portal to be closed)\b", candidate_dl, re.IGNORECASE):
+                                continue
+                            raw_deadline = candidate_dl
+                            field_evidence["application_deadline"] = p[:300]
+                            if p not in supporting_quotations and len(supporting_quotations) < 6:
+                                supporting_quotations.append(p[:300])
+                            break
             if raw_deadline:
                 break
 
@@ -228,10 +394,16 @@ class PDFExtractor:
         description = desc_candidates[0] if desc_candidates else f"Official guidelines for {scheme_title}."
         field_evidence["description"] = description[:300]
 
+        # Determine application status and academic year
+        app_status, detected_year = determine_application_status(
+            deadline_iso=iso_deadline,
+            raw_text=full_text[:4000],
+        )
+
         return [
             {
                 "scheme_name": scheme_title,
-                "government_authority": default_authority,
+                "government_authority": authority_final,
                 "description": description,
                 "eligibility_criteria": cleaned_eligibility,
                 "scholarship_amount": amount_final,
@@ -242,5 +414,7 @@ class PDFExtractor:
                 "supporting_quotations": supporting_quotations,
                 "field_evidence": field_evidence,
                 "verification_status": "unverified",
+                "scheme_year": detected_year,
+                "application_status": app_status,
             }
         ]

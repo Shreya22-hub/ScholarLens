@@ -38,7 +38,7 @@
       "id": "aicte-schemes",
       "name": "AICTE Student Development Schemes",
       "authority": "All India Council for Technical Education (AICTE), Government of India",
-      "url": "https://www.aicte-india.org/schemes/students-development-schemes",
+      "url": "https://www.aicte.gov.in/schemes/students-development-schemes",
       "source_type": "html",
       "category": "Technical Education",
       "enabled": true,
@@ -48,7 +48,7 @@
       "last_checked_timestamp": null,
       "last_verified_timestamp": null,
       "last_error": null,
-      "notes": "Portal for Pragati, Saksham, Swanath, and PG scholarship schemes."
+      "notes": "Official portal for AICTE student development, Pragati, Saksham, Swanath, and PG scholarship schemes on updated aicte.gov.in domain."
     },
     {
       "id": "tribal-affairs",
@@ -73,14 +73,14 @@
       "url": "https://www.education.gov.in/scholarships",
       "source_type": "html",
       "category": "Central Sector Schemes",
-      "enabled": true,
-      "is_active": true,
+      "enabled": false,
+      "is_active": false,
       "verified": false,
       "verification_status": "unverified",
       "last_checked_timestamp": null,
       "last_verified_timestamp": null,
       "last_error": null,
-      "notes": "Central Sector Scheme of Scholarships for College and University Students."
+      "notes": "Temporarily disabled: automated crawling disallowed by education.gov.in/robots.txt published policy."
     },
     {
       "id": "csss-guidelines-pdf",
@@ -89,14 +89,14 @@
       "url": "https://www.education.gov.in/sites/upload_files/mhrd/files/upload_document/guidelines_csss.pdf",
       "source_type": "pdf",
       "category": "Scheme Guidelines & Notification",
-      "enabled": true,
-      "is_active": true,
+      "enabled": false,
+      "is_active": false,
       "verified": false,
       "verification_status": "unverified",
       "last_checked_timestamp": null,
       "last_verified_timestamp": null,
       "last_error": null,
-      "notes": "Official policy circular and eligibility guidelines for Central Sector Scheme."
+      "notes": "Temporarily disabled: automated crawling disallowed by education.gov.in/robots.txt published policy."
     }
   ]
 }

@@ -177,6 +177,14 @@ class ScholarshipMatchResult(BaseModel):
         default_factory=dict,
         description="Field-level verbatim citations backing this scholarship.",
     )
+    application_status: Optional[str] = Field(
+        default=None,
+        description="Application cycle status (e.g. open, closed, expired, unknown).",
+    )
+    scheme_year: Optional[str] = Field(
+        default=None,
+        description="Academic year or cycle for the scheme.",
+    )
 
 
 class MatchingResponse(BaseModel):

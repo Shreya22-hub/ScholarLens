@@ -166,4 +166,6 @@ class EligibilityEvaluator:
             scholarship_amount=scholarship.scholarship_amount,
             application_deadline=scholarship.application_deadline,
             evidence_references=scholarship.field_evidence or {},
+            application_status=scholarship.application_status,
+            scheme_year=scholarship.scheme_year,
         )
