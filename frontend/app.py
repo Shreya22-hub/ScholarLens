@@ -272,13 +272,17 @@ with tab_matcher:
                 results = match_res.get("results", [])
                 categorized = categorize_match_results(results)
                 confirmed_eligible = categorized["confirmed_eligible"]
+                open_confirmed = categorized["open_confirmed_eligible"]
+                historical_closed = categorized["historical_closed_eligible"]
+                unknown_cycle = categorized["unknown_cycle_eligible"]
                 potentially_eligible = categorized["potentially_eligible"]
                 not_eligible = categorized["not_eligible"]
                 unverified_provisional = categorized["unverified_provisional"]
 
                 st.markdown("---")
-                subtab_el, subtab_pot, subtab_not, subtab_prov = st.tabs([
-                    f"🟢 Confirmed Eligible ({len(confirmed_eligible)})",
+                subtab_open, subtab_hist, subtab_pot, subtab_not, subtab_prov = st.tabs([
+                    f"🟢 Open Opportunities ({len(open_confirmed)})",
+                    f"🏛️ Historical & Unconfirmed Matches ({len(historical_closed) + len(unknown_cycle)})",
                     f"🟡 Potentially Eligible ({len(potentially_eligible)})",
                     f"🔴 Not Eligible ({len(not_eligible)})",
                     f"⚠️ Provisional / Unverified ({len(unverified_provisional)})",
@@ -288,10 +292,19 @@ with tab_matcher:
                     outcome = r.get("match_outcome")
                     is_prov = r.get("is_provisional", False)
                     ver_status = r.get("verification_status", "unverified")
+                    app_status = (r.get("application_status") or "unknown").strip().lower()
+                    scheme_year = r.get("scheme_year")
 
                     if outcome == "eligible" and not is_prov and ver_status == "verified":
-                        badge_color = "green"
-                        badge_label = "CONFIRMED ELIGIBLE"
+                        if app_status == "open":
+                            badge_color = "green"
+                            badge_label = "CONFIRMED ELIGIBLE & OPEN"
+                        elif app_status in ("closed", "expired"):
+                            badge_color = "#b91c1c"
+                            badge_label = "ELIGIBLE (HISTORICAL — NOT CURRENTLY OPEN)"
+                        else:
+                            badge_color = "#475569"
+                            badge_label = "ELIGIBLE (CYCLE STATUS UNCONFIRMED)"
                     elif outcome == "potentially_eligible":
                         badge_color = "orange"
                         badge_label = "POTENTIALLY ELIGIBLE (PROVISIONAL)" if is_prov else "POTENTIALLY ELIGIBLE"
@@ -308,15 +321,49 @@ with tab_matcher:
                         )
                         st.write(f"**Authority**: {r.get('government_authority')}")
 
-                        if show_provisional_alert and is_prov:
+                        # Explicit status callouts based on application availability & verification
+                        if is_prov or show_provisional_alert:
                             st.warning(
                                 "⚠️ **Provisional Evaluation Notice**: This scholarship record is UNVERIFIED against official "
                                 "circulars. Eligibility cannot be confirmed until primary documents are validated."
                             )
+                        elif outcome == "eligible" and not is_prov and ver_status == "verified":
+                            if app_status == "open":
+                                st.success("🟢 **Confirmed Open Opportunity**: Verified against official circulars and currently accepting student applications.")
+                            elif app_status in ("closed", "expired"):
+                                st.info(
+                                    "🔴 **Historical Scholarship — Not Currently Open**: Your profile matches the published criteria for this scheme, "
+                                    "but this application cycle is closed. Documented historically for your reference. Do not attempt to apply for past cycles."
+                                )
+                            else:
+                                st.warning(
+                                    "⚠️ **Application status has not been confirmed. Check the official source before applying.** "
+                                    "Your profile matches the published guideline criteria, but active application dates have not been established by primary evidence."
+                                )
+
+                        # Clear 3-Pillar Status Distinction (Eligibility vs Verification vs Application Availability)
+                        c_elig, c_veri, c_avail = st.columns(3)
+                        with c_elig:
+                            if outcome == "eligible":
+                                st.markdown("🎯 **Eligibility Match**\n\n`✅ Criteria Satisfied`")
+                            elif outcome == "potentially_eligible":
+                                st.markdown("🎯 **Eligibility Match**\n\n`🟡 Pending Information`")
+                            else:
+                                st.markdown("🎯 **Eligibility Match**\n\n`❌ Criteria Failed`")
+                        with c_veri:
+                            if ver_status == "verified" and not is_prov:
+                                st.markdown("🛡️ **Evidence Verification**\n\n`🛡️ Official Source Verified`")
+                            else:
+                                st.markdown("🛡️ **Evidence Verification**\n\n`⚠️ Unverified / Provisional`")
+                        with c_avail:
+                            app_badge, app_help = format_application_status_display(app_status, scheme_year)
+                            st.markdown(f"⏱️ **Application Availability**\n\n`{app_badge}`")
+                            if app_help:
+                                st.caption(app_help)
 
                         st.info(f"💡 **Evaluation Explanation**: {r.get('explanation')}")
 
-                        # Detailed Passed / Failed / Unknown Breakdowns
+                        # Detailed Passed / Failed / Unknown Breakdowns (Criterion-level explanations preserved)
                         c_pass, c_fail, c_unk = st.columns(3)
                         with c_pass:
                             passed = r.get("passed_criteria", [])
@@ -339,8 +386,8 @@ with tab_matcher:
                                 for u in unknown:
                                     st.markdown(f"- `{u.get('criterion_type').upper()}`: {u.get('reason')}")
 
-                        # Honest amount, deadline, and application cycle display
-                        col_amt, col_dead, col_stat = st.columns(3)
+                        # Financial Benefit and Deadline display
+                        col_amt, col_dead = st.columns(2)
                         with col_amt:
                             amt_display = format_amount_display(
                                 r.get("scholarship_amount"),
@@ -357,16 +404,9 @@ with tab_matcher:
                             st.write(f"📅 **Deadline**: `{dead_disp}`")
                             if dead_caption:
                                 st.caption(dead_caption)
-                        with col_stat:
-                            app_badge, app_help = format_application_status_display(
-                                r.get("application_status"),
-                                r.get("scheme_year"),
-                            )
-                            st.write(f"⏱️ **Application Cycle**: `{app_badge}`")
-                            st.caption(app_help)
 
                         url = r.get("official_source_url")
-                        st.write(f"🔗 **Source**: [{url}]({url})")
+                        st.write(f"🔗 **Official Source Link**: [{url}]({url})")
 
                         evidence = r.get("evidence_references", {})
                         if evidence:
@@ -374,16 +414,40 @@ with tab_matcher:
                                 for k, v in evidence.items():
                                     st.markdown(f"- **{k.replace('_', ' ').title()}**: *\"{v}\"*")
 
-                with subtab_el:
-                    if confirmed_eligible:
-                        for r in confirmed_eligible:
+                with subtab_open:
+                    if open_confirmed:
+                        for r in open_confirmed:
                             render_match_card(r)
                     else:
                         st.info(
-                            "ℹ️ **No verified scholarships currently match all your mandatory criteria.**\n\n"
-                            "- Check **Potentially Eligible** for schemes where criteria are pending additional profile details.\n"
-                            "- Check **Provisional / Unverified** for schemes that match your profile but remain unverified against official circulars."
+                            "ℹ️ **No currently open verified opportunities confirmed.**\n\n"
+                            "No scholarship with verified official evidence is currently confirmed open for student applications. "
+                            "Review the **Historical & Unconfirmed Matches** tab for past scholarship benchmarks and schemes with unconfirmed application cycles."
                         )
+
+                with subtab_hist:
+                    if unknown_cycle:
+                        st.markdown("### ⚪ Verified Guidelines — Application Status Unconfirmed")
+                        st.warning(
+                            "⚠️ **Application status has not been confirmed. Check the official source before applying.**\n\n"
+                            "Your profile matches the published eligibility criteria verified from official guidelines, "
+                            "but active portal submission dates are not established in the circular."
+                        )
+                        for r in unknown_cycle:
+                            render_match_card(r)
+
+                    if historical_closed:
+                        st.markdown("### 🔴 Historical Scholarships — Not Currently Open")
+                        st.info(
+                            "ℹ️ **Historical Scholarship — Not Currently Open**: Your profile matches the published criteria "
+                            "for these past scholarship cycles. Documented historically from official records for your reference. "
+                            "Do not attempt to apply for closed cycles."
+                        )
+                        for r in historical_closed:
+                            render_match_card(r)
+
+                    if not unknown_cycle and not historical_closed:
+                        st.info("ℹ️ **No historical or unconfirmed eligible scholarships match your profile.**")
 
                 with subtab_pot:
                     if potentially_eligible:
@@ -392,7 +456,7 @@ with tab_matcher:
                     else:
                         st.info("ℹ️ **No potentially eligible scholarships pending information.**")
 
-                with subtab_not_eligible:
+                with subtab_not:
                     if not_eligible:
                         for r in not_eligible:
                             render_match_card(r)

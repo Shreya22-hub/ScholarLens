@@ -251,6 +251,147 @@ class TestFrontendHelpers(unittest.TestCase):
         badge_none, _ = format_application_status_display(None)
         self.assertIn("⚪ Status Unknown / Unconfirmed", badge_none)
 
+    def test_categorize_open_verified_opportunity(self):
+        """Scenario 1: Verified scholarship with confirmed open status is segregated into open_confirmed_eligible."""
+        results = [
+            {
+                "scheme_name": "AICTE Pragati Open",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "open",
+            }
+        ]
+        categorized = categorize_match_results(results)
+        self.assertEqual(len(categorized["open_confirmed_eligible"]), 1)
+        self.assertEqual(categorized["open_confirmed_eligible"][0]["scheme_name"], "AICTE Pragati Open")
+        self.assertEqual(len(categorized["confirmed_eligible"]), 1)
+        self.assertEqual(len(categorized["historical_closed_eligible"]), 0)
+        self.assertEqual(len(categorized["unknown_cycle_eligible"]), 0)
+        self.assertEqual(len(categorized["unverified_provisional"]), 0)
+
+    def test_categorize_verified_closed_scholarship(self):
+        """Scenario 2: Verified scholarship with closed/expired status is segregated into historical_closed_eligible."""
+        results = [
+            {
+                "scheme_name": "AICTE Pragati 2019-20",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "closed",
+            },
+            {
+                "scheme_name": "UGC Ishan Uday 2023-24",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "expired",
+            },
+        ]
+        categorized = categorize_match_results(results)
+        self.assertEqual(len(categorized["historical_closed_eligible"]), 2)
+        self.assertEqual(len(categorized["open_confirmed_eligible"]), 0)
+        self.assertEqual(len(categorized["confirmed_eligible"]), 2)
+        self.assertEqual(len(categorized["unknown_cycle_eligible"]), 0)
+
+    def test_categorize_verified_unknown_cycle_scholarship(self):
+        """Scenario 3: Verified scholarship with unknown status is segregated into unknown_cycle_eligible."""
+        results = [
+            {
+                "scheme_name": "Sarswati Guideline Scheme",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "deadline_published_status_unknown",
+            },
+            {
+                "scheme_name": "General Standing Guidelines",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "unknown",
+            },
+        ]
+        categorized = categorize_match_results(results)
+        self.assertEqual(len(categorized["unknown_cycle_eligible"]), 2)
+        self.assertEqual(len(categorized["open_confirmed_eligible"]), 0)
+        self.assertEqual(len(categorized["historical_closed_eligible"]), 0)
+        self.assertEqual(len(categorized["confirmed_eligible"]), 2)
+
+    def test_categorize_unverified_barred_from_confirmed_opportunities(self):
+        """Scenario 4: Unverified scholarship is barred from confirmed/open opportunities even if matching criteria."""
+        results = [
+            {
+                "scheme_name": "Unverified Portal Fellowship",
+                "match_outcome": "eligible",
+                "verification_status": "unverified",
+                "is_provisional": True,
+                "application_status": "open",
+            }
+        ]
+        categorized = categorize_match_results(results)
+        self.assertEqual(len(categorized["open_confirmed_eligible"]), 0)
+        self.assertEqual(len(categorized["confirmed_eligible"]), 0)
+        self.assertEqual(len(categorized["unverified_provisional"]), 1)
+        self.assertEqual(categorized["unverified_provisional"][0]["scheme_name"], "Unverified Portal Fellowship")
+
+    def test_categorize_empty_confirmed_open_opportunities(self):
+        """Scenario 5: Empty confirmed-open opportunities section when all matches are historical, unknown, or unverified."""
+        results = [
+            {
+                "scheme_name": "AICTE Pragati 2019-20",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "closed",
+            },
+            {
+                "scheme_name": "AICTE Saksham Guidelines",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "unknown",
+            },
+            {
+                "scheme_name": "Unverified Record",
+                "match_outcome": "potentially_eligible",
+                "verification_status": "unverified",
+                "is_provisional": True,
+                "application_status": "open",
+            },
+        ]
+        categorized = categorize_match_results(results)
+        self.assertEqual(len(categorized["open_confirmed_eligible"]), 0)
+        self.assertEqual(len(categorized["historical_closed_eligible"]), 1)
+        self.assertEqual(len(categorized["unknown_cycle_eligible"]), 1)
+        self.assertEqual(len(categorized["unverified_provisional"]), 1)
+
+    def test_student_matching_historical_scholarship_preserves_eligibility_without_claiming_open(self):
+        """Scenario 6: Student matching historical criteria is confirmed eligible but segregated from open opportunities."""
+        historical_match = {
+            "scheme_name": "AICTE Pragati 2019-20",
+            "government_authority": "AICTE",
+            "match_outcome": "eligible",
+            "is_provisional": False,
+            "verification_status": "verified",
+            "application_status": "closed",
+            "scheme_year": "2019-20",
+            "passed_criteria": [
+                {"criterion_type": "income", "reason": "Income ₹4,00,000 <= ₹8,00,000"},
+                {"criterion_type": "gender", "reason": "Gender female matches girl student scheme"},
+                {"criterion_type": "education_level", "reason": "Degree level matched"},
+            ],
+            "failed_criteria": [],
+            "unknown_criteria": [],
+        }
+        categorized = categorize_match_results([historical_match])
+        # Student IS confirmed eligible under criteria
+        self.assertIn(historical_match, categorized["confirmed_eligible"])
+        # Student IS in historical_closed_eligible
+        self.assertIn(historical_match, categorized["historical_closed_eligible"])
+        # Student is STRICTLY NOT in open_confirmed_eligible
+        self.assertNotIn(historical_match, categorized["open_confirmed_eligible"])
+
 
 if __name__ == "__main__":
     unittest.main()

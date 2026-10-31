@@ -89,8 +89,11 @@ def categorize_match_results(results: List[Dict[str, Any]]) -> Dict[str, List[Di
     """Group matching results into distinct, explainable categories for UI display.
 
     Design:
-    - confirmed_eligible: Contains ONLY confirmed, verified scholarships meeting all mandatory criteria.
+    - confirmed_eligible: Contains ALL confirmed, verified scholarships meeting all mandatory criteria.
       An unverified scholarship is strictly excluded from confirmed_eligible.
+    - open_confirmed_eligible: Subset of confirmed_eligible with confirmed 'open' application cycle.
+    - historical_closed_eligible: Subset of confirmed_eligible with closed or expired cycle.
+    - unknown_cycle_eligible: Subset of confirmed_eligible with unknown or unconfirmed cycle dates.
     - potentially_eligible: Contains scholarships where no mandatory criteria failed, but certain
       criteria remain pending additional profile details or manual circular review.
     - not_eligible: Contains scholarships where at least one mandatory condition clearly failed.
@@ -100,10 +103,14 @@ def categorize_match_results(results: List[Dict[str, Any]]) -> Dict[str, List[Di
     Note on counts:
     - confirmed_eligible + potentially_eligible + not_eligible partition the total evaluated scholarships
       (sum == total_evaluated).
+    - open_confirmed_eligible + historical_closed_eligible + unknown_cycle_eligible partition confirmed_eligible.
     - unverified_provisional represents the cross-cutting subset of total evaluated scholarships with
       provisional status, ensuring users can audit unverified schemes without inflating the primary outcome partition.
     """
     confirmed_eligible: List[Dict[str, Any]] = []
+    open_confirmed_eligible: List[Dict[str, Any]] = []
+    historical_closed_eligible: List[Dict[str, Any]] = []
+    unknown_cycle_eligible: List[Dict[str, Any]] = []
     potentially_eligible: List[Dict[str, Any]] = []
     not_eligible: List[Dict[str, Any]] = []
     unverified_provisional: List[Dict[str, Any]] = []
@@ -112,12 +119,19 @@ def categorize_match_results(results: List[Dict[str, Any]]) -> Dict[str, List[Di
         outcome = r.get("match_outcome")
         is_provisional = r.get("is_provisional", False)
         ver_status = r.get("verification_status", "unverified")
+        app_status = (r.get("application_status") or "unknown").strip().lower()
 
         if is_provisional or ver_status != "verified":
             unverified_provisional.append(r)
 
         if outcome == "eligible" and not is_provisional and ver_status == "verified":
             confirmed_eligible.append(r)
+            if app_status == "open":
+                open_confirmed_eligible.append(r)
+            elif app_status in ("closed", "expired"):
+                historical_closed_eligible.append(r)
+            else:
+                unknown_cycle_eligible.append(r)
         elif outcome == "potentially_eligible":
             potentially_eligible.append(r)
         elif outcome == "not_eligible":
@@ -125,6 +139,9 @@ def categorize_match_results(results: List[Dict[str, Any]]) -> Dict[str, List[Di
 
     return {
         "confirmed_eligible": confirmed_eligible,
+        "open_confirmed_eligible": open_confirmed_eligible,
+        "historical_closed_eligible": historical_closed_eligible,
+        "unknown_cycle_eligible": unknown_cycle_eligible,
         "potentially_eligible": potentially_eligible,
         "not_eligible": not_eligible,
         "unverified_provisional": unverified_provisional,
