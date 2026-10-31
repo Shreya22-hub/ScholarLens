@@ -86,6 +86,32 @@ class TestMatchingRulesExtraction(unittest.TestCase):
         self.assertEqual(extract_target_category("Welfare scheme for OBC students"), SocialCategory.OBC)
         self.assertEqual(extract_target_category("Financial assistance for Minority communities"), SocialCategory.MINORITY)
 
+    def test_extract_target_gender_edge_cases(self):
+        """Test comprehensive gender extraction covering standalone girls, girl students, and women."""
+        # 1. "Meritorious girls..." correctly identifies female-only
+        self.assertEqual(
+            extract_target_gender("Meritorious girls taking admission in AICTE approved Technical institution at Degree/ Diploma level."),
+            Gender.FEMALE,
+        )
+        # 2. "Girl students..." retains existing behavior
+        self.assertEqual(
+            extract_target_gender("Girl students admitted to 1st year Degree programme"),
+            Gender.FEMALE,
+        )
+        # 3. "Women candidates..." retains existing behavior
+        self.assertEqual(
+            extract_target_gender("Financial assistance for women candidates pursuing doctoral research"),
+            Gender.FEMALE,
+        )
+        self.assertEqual(
+            extract_target_gender("Female students pursuing technical diplomas"),
+            Gender.FEMALE,
+        )
+        # 5. Unrestricted criterion does not invent gender requirement
+        self.assertIsNone(extract_target_gender("General merit scholarship for all students"))
+        self.assertIsNone(extract_target_gender("Students pursuing degree programme in engineering"))
+        self.assertIsNone(extract_target_gender("Minimum 60% marks in qualifying examination"))
+
 
 class TestEligibilityEvaluator(unittest.TestCase):
     """Test deterministic explainable evaluation logic."""
@@ -757,6 +783,51 @@ class TestCompoundEducationLevelMatching(unittest.TestCase):
         # Diploma should fail
         res_dip = EligibilityEvaluator.evaluate(scheme_ug_pg, StudentProfile(education_level=EducationLevel.DIPLOMA))
         self.assertEqual(res_dip.match_outcome, MatchOutcome.NOT_ELIGIBLE)
+
+    def test_pragati_meritorious_girls_evaluates_male_as_not_eligible(self):
+        """Task 4.1: Criterion 'Meritorious girls...' rejects male applicant on gender."""
+        pragati_scheme = ScholarshipRecord(
+            id=302,
+            scheme_name="AICTE Pragati Scholarship Scheme",
+            government_authority="AICTE",
+            description="Financial support for girls.",
+            eligibility_criteria=["Meritorious girls taking admission in AICTE approved Technical institution at Degree/ Diploma level."],
+            scholarship_amount="Rs 50000",
+            official_source_url="https://www.aicte.gov.in/schemes",
+            verification_status=VerificationStatus.VERIFIED,
+        )
+        male_student = StudentProfile(
+            education_level=EducationLevel.UNDERGRADUATE,
+            gender=Gender.MALE,
+        )
+        female_student = StudentProfile(
+            education_level=EducationLevel.UNDERGRADUATE,
+            gender=Gender.FEMALE,
+        )
+        res_male = EligibilityEvaluator.evaluate(pragati_scheme, male_student)
+        self.assertEqual(res_male.match_outcome, MatchOutcome.NOT_ELIGIBLE)
+        self.assertTrue(any(f.criterion_type == CriterionType.GENDER for f in res_male.failed_criteria))
+
+        res_female = EligibilityEvaluator.evaluate(pragati_scheme, female_student)
+        self.assertEqual(res_female.match_outcome, MatchOutcome.ELIGIBLE)
+
+    def test_synthetic_aura_matching_with_separated_objective(self):
+        """Task 4.7: Synthetic AURA record with objective separated evaluates cleanly without UNKNOWN general condition."""
+        synthetic_aura = ScholarshipRecord(
+            id=301,
+            scheme_name="[SYNTHETIC TEST DATA] AICTE AURA Cleaned",
+            government_authority="AICTE",
+            description="Utilization of I-STEM research assets.",
+            eligibility_criteria=["Regular faculty and students of Diploma/UG/PG in AICTE-approved institutions."],
+            scholarship_amount="Rs 2 lakh",
+            official_source_url="https://www.aicte.gov.in/schemes",
+            verification_status=VerificationStatus.VERIFIED,
+        )
+        ug_student = StudentProfile(education_level=EducationLevel.UNDERGRADUATE)
+        res = EligibilityEvaluator.evaluate(synthetic_aura, ug_student)
+        self.assertEqual(res.match_outcome, MatchOutcome.ELIGIBLE)
+        self.assertEqual(len(res.unknown_criteria), 0)
+        self.assertEqual(len(res.failed_criteria), 0)
 
 
 if __name__ == "__main__":

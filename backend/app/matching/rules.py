@@ -435,9 +435,9 @@ def extract_academic_percentage(text: str) -> Optional[float]:
 
 
 def extract_target_gender(text: str) -> Optional[Gender]:
-    """Detect if the scheme or criterion is gender-specific (e.g. girl students)."""
+    """Detect if the scheme or criterion is gender-specific (e.g. girl students, women)."""
     t = text.lower()
-    if any(k in t for k in ["girl student", "girl students", "women", "female students", "daughters", "single girl child"]):
+    if re.search(r"\b(?:girls?|women|woman|female|daughters?|single\s*girl\s*child)\b", t):
         return Gender.FEMALE
     return None
 

@@ -186,6 +186,25 @@ class TestEligibilityCriteriaCleaning(unittest.TestCase):
         self.assertTrue(any("8 lakh per annum" in c for c in cleaned))
         self.assertTrue(any("80% marks" in c for c in cleaned))
 
+    def test_institutional_objective_separated_from_applicant_eligibility(self):
+        """Task 4.6 & 4.7: Institutional objective text is separated from genuine applicant eligibility criteria."""
+        raw_criteria = [
+            "For promoting the utilization of I-STEM (India Science Technology Engineering facilities Map).",
+            "To promote research and innovation in AICTE approved institutions.",
+            "Objective of the scheme is to foster technical research.",
+            "Regular faculty and students of Diploma/UG/PG in AICTE-approved institutions.",
+            "Minimum 60% marks in qualifying examination.",
+        ]
+        cleaned = clean_eligibility_criteria(raw_criteria)
+        # Institutional objectives starting with 'For promoting...', 'To promote...', 'Objective of...' must be excluded
+        self.assertFalse(any("promoting the utilization of I-STEM" in c for c in cleaned))
+        self.assertFalse(any("To promote research" in c for c in cleaned))
+        self.assertFalse(any("Objective of the scheme" in c for c in cleaned))
+        # Genuine applicant eligibility conditions must remain intact
+        self.assertEqual(len(cleaned), 2)
+        self.assertTrue(any("Regular faculty and students of Diploma/UG/PG" in c for c in cleaned))
+        self.assertTrue(any("Minimum 60% marks" in c for c in cleaned))
+
 
 class TestConservativeVerificationRules(unittest.TestCase):
     """Tests for conservative verification rules and explanatory notes."""

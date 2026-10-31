@@ -466,7 +466,15 @@ def clean_eligibility_criteria(criteria_list: List[str]) -> List[str]:
         if re.match(r"^as\s+per\s+(?:scheme\s+)?eligibility\s+criteria\b", lower):
             continue
 
-        # Check for substantive eligibility indicator
+        # Reject institutional objectives / scheme purpose statements
+        if (
+            re.match(r"^(?:for|to)\s+(?:promot|enhanc|encourag|foster)(?:e|ing)\b", lower)
+            or re.match(r"^(?:the\s+)?(?:objective|aim|purpose)\s+of\s+(?:the\s+)?scheme\b", lower)
+            or re.match(r"^(?:this\s+)?scheme\s+(?:aims|is\s+intended)\s+to\b", lower)
+        ):
+            continue
+
+        # Check for substantive eligibility indicator (using word boundaries for short acronyms)
         has_substantive = any(
             kw in lower
             for kw in [
@@ -487,20 +495,23 @@ def clean_eligibility_criteria(criteria_list: List[str]) -> List[str]:
                 "passed",
                 "admitted",
                 "enrolled",
-                "sc",
-                "st",
-                "obc",
-                "ebc",
-                "dnt",
                 "women",
                 "girl",
                 "disabilit",
-                "pwd",
                 "minority",
                 "quota",
                 "regular",
+                "faculty",
+                "polytechnic",
+                "diploma",
+                "undergraduate",
+                "postgraduate",
+                "doctoral",
+                "doctorate",
+                "bachelor",
+                "master",
             ]
-        )
+        ) or bool(re.search(r"\b(?:sc|st|obc|ebc|dnt|pwd)\b", lower))
         if not has_substantive:
             continue
 
