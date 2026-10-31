@@ -16,9 +16,14 @@ import requests
 from frontend.helpers import (
     categorize_match_results,
     evaluate_student_matching,
+    filter_match_results,
     format_amount_display,
     format_application_status_display,
     format_deadline_display,
+    get_record_category_label,
+    get_record_status_label,
+    get_record_verification_label,
+    humanize_criterion_type,
     validate_and_build_profile,
 )
 
@@ -457,6 +462,194 @@ class TestFrontendHelpers(unittest.TestCase):
         self.assertNotIn("Unverified Scheme", names_t1)
         self.assertNotIn("Unverified Scheme", names_t2)
         self.assertNotIn("Unverified Scheme", names_t4)
+
+    def test_humanize_criterion_type(self):
+        """Test humanizing raw backend criterion type enums into student-friendly labels."""
+        self.assertEqual(humanize_criterion_type("education_level"), "Education Level")
+        self.assertEqual(humanize_criterion_type("EDUCATION_LEVEL"), "Education Level")
+        self.assertEqual(humanize_criterion_type("academic_marks"), "Academic Marks Requirement")
+        self.assertEqual(humanize_criterion_type("income"), "Family Income Ceiling")
+        self.assertEqual(humanize_criterion_type("annual_family_income"), "Family Income Ceiling")
+        self.assertEqual(humanize_criterion_type("gender"), "Gender Restriction")
+        self.assertEqual(humanize_criterion_type("category"), "Social Category")
+        self.assertEqual(humanize_criterion_type("disability"), "Disability Benchmark")
+        self.assertEqual(humanize_criterion_type("state"), "State / Domicile")
+        self.assertEqual(humanize_criterion_type("course"), "Degree / Discipline")
+        self.assertEqual(humanize_criterion_type(""), "General Criterion")
+        self.assertEqual(humanize_criterion_type(None), "General Criterion")
+
+    def test_get_record_labels(self):
+        """Test category, status, and verification classification helpers."""
+        r_open = {
+            "match_outcome": "eligible",
+            "verification_status": "verified",
+            "is_provisional": False,
+            "application_status": "open",
+        }
+        self.assertEqual(get_record_category_label(r_open), "Confirmed Open")
+        self.assertEqual(get_record_status_label(r_open), "Open")
+        self.assertEqual(get_record_verification_label(r_open), "Verified")
+
+        r_hist = {
+            "match_outcome": "eligible",
+            "verification_status": "verified",
+            "is_provisional": False,
+            "application_status": "closed",
+        }
+        self.assertEqual(get_record_category_label(r_hist), "Historical / Unconfirmed")
+        self.assertEqual(get_record_status_label(r_hist), "Closed / Past Cycle")
+
+        r_unk = {
+            "match_outcome": "eligible",
+            "verification_status": "verified",
+            "is_provisional": False,
+            "application_status": "unknown",
+        }
+        self.assertEqual(get_record_category_label(r_unk), "Historical / Unconfirmed")
+        self.assertEqual(get_record_status_label(r_unk), "Unknown / Unconfirmed")
+
+        r_pot = {
+            "match_outcome": "potentially_eligible",
+            "verification_status": "verified",
+            "is_provisional": False,
+        }
+        self.assertEqual(get_record_category_label(r_pot), "Potentially Eligible")
+
+        r_not = {
+            "match_outcome": "not_eligible",
+            "verification_status": "verified",
+            "is_provisional": False,
+        }
+        self.assertEqual(get_record_category_label(r_not), "Not Eligible")
+
+        r_prov = {
+            "match_outcome": "eligible",
+            "verification_status": "unverified",
+            "is_provisional": True,
+        }
+        self.assertEqual(get_record_category_label(r_prov), "Provisional / Unverified")
+        self.assertEqual(get_record_verification_label(r_prov), "Unverified / Provisional")
+
+    def test_filter_match_results_search_and_filters(self):
+        """Test client-side search across fields and practical filter combinations."""
+        records = [
+            {
+                "scheme_name": "AICTE Pragati Scholarship Scheme",
+                "government_authority": "All India Council for Technical Education (AICTE)",
+                "description": "Scholarship for girl students pursuing technical education.",
+                "explanation": "Criteria matched: Degree student, female gender, income within ceiling.",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "closed",
+                "scheme_year": 2019,
+                "course": "undergraduate",
+            },
+            {
+                "scheme_name": "AICTE Saksham Scholarship Scheme",
+                "government_authority": "All India Council for Technical Education (AICTE)",
+                "description": "Financial assistance for specially-abled students.",
+                "explanation": "Criteria matched: Degree student, benchmark disability verified.",
+                "match_outcome": "eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "closed",
+                "scheme_year": 2019,
+                "course": "undergraduate",
+            },
+            {
+                "scheme_name": "AICTE AURA Scheme",
+                "government_authority": "All India Council for Technical Education (AICTE)",
+                "description": "Augmenting utilization of research assets.",
+                "explanation": "Criteria pending review.",
+                "match_outcome": "potentially_eligible",
+                "verification_status": "verified",
+                "is_provisional": False,
+                "application_status": "unknown",
+                "scheme_year": 2024,
+            },
+            {
+                "scheme_name": "MeitY Post-Doctoral Fellowship",
+                "government_authority": "Ministry of Electronics and Information Technology (MeitY)",
+                "description": "Fellowship for doctoral and post-doctoral research in electronics.",
+                "explanation": "Unverified draft circular.",
+                "match_outcome": "eligible",
+                "verification_status": "unverified",
+                "is_provisional": True,
+                "application_status": "open",
+            },
+        ]
+
+        # 1. Search by name (case-insensitive)
+        res_name = filter_match_results(records, query="pragati")
+        self.assertEqual(len(res_name), 1)
+        self.assertEqual(res_name[0]["scheme_name"], "AICTE Pragati Scholarship Scheme")
+
+        # 2. Search by authority
+        res_meity = filter_match_results(records, query="MeitY")
+        self.assertEqual(len(res_meity), 1)
+        self.assertEqual(res_meity[0]["scheme_name"], "MeitY Post-Doctoral Fellowship")
+
+        # 3. Search by keywords across description / criteria
+        res_girl = filter_match_results(records, query="girl")
+        self.assertEqual(len(res_girl), 1)
+
+        # 4. Multi-token search (AND matching)
+        res_multi = filter_match_results(records, query="AICTE saksham")
+        self.assertEqual(len(res_multi), 1)
+        self.assertEqual(res_multi[0]["scheme_name"], "AICTE Saksham Scholarship Scheme")
+
+        # 5. Non-matching query
+        res_none = filter_match_results(records, query="NonExistentScheme999")
+        self.assertEqual(len(res_none), 0)
+
+        # 6. Filter by Application Status
+        res_open = filter_match_results(records, status="Open")
+        self.assertEqual(len(res_open), 1)
+        self.assertEqual(res_open[0]["scheme_name"], "MeitY Post-Doctoral Fellowship")
+
+        res_closed = filter_match_results(records, status="Closed / Past Cycle")
+        self.assertEqual(len(res_closed), 2)
+
+        res_unk = filter_match_results(records, status="Unknown / Unconfirmed")
+        self.assertEqual(len(res_unk), 1)
+        self.assertEqual(res_unk[0]["scheme_name"], "AICTE AURA Scheme")
+
+        # 7. Filter by Verification
+        res_veri = filter_match_results(records, verification="Verified")
+        self.assertEqual(len(res_veri), 3)
+
+        res_unveri = filter_match_results(records, verification="Unverified / Provisional")
+        self.assertEqual(len(res_unveri), 1)
+
+        # 8. Filter by Eligibility Category
+        res_cat_hist = filter_match_results(records, category="Historical / Unconfirmed")
+        self.assertEqual(len(res_cat_hist), 2)
+
+        res_cat_pot = filter_match_results(records, category="Potentially Eligible")
+        self.assertEqual(len(res_cat_pot), 1)
+
+        res_cat_prov = filter_match_results(records, category="Provisional / Unverified")
+        self.assertEqual(len(res_cat_prov), 1)
+
+        # 9. Filter by Governing Authority
+        res_auth = filter_match_results(records, authority="Ministry of Electronics and Information Technology (MeitY)")
+        self.assertEqual(len(res_auth), 1)
+
+        # 10. Combined search and filters
+        res_comb = filter_match_results(
+            records,
+            query="scholarship",
+            authority="All India Council for Technical Education (AICTE)",
+            status="Closed / Past Cycle",
+            verification="Verified",
+            category="Historical / Unconfirmed",
+        )
+        self.assertEqual(len(res_comb), 2)
+
+        # 11. Reset / All defaults returns all records
+        res_all = filter_match_results(records)
+        self.assertEqual(len(res_all), len(records))
 
 
 if __name__ == "__main__":

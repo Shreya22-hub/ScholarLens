@@ -8,6 +8,23 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 import requests
 
+__all__ = [
+    "LEVEL_MAP",
+    "GENDER_MAP",
+    "CATEGORY_MAP",
+    "validate_and_build_profile",
+    "categorize_match_results",
+    "format_amount_display",
+    "format_deadline_display",
+    "format_application_status_display",
+    "humanize_criterion_type",
+    "get_record_category_label",
+    "get_record_status_label",
+    "get_record_verification_label",
+    "filter_match_results",
+    "evaluate_student_matching",
+]
+
 
 # Mapping constants from UI dropdown labels to Pydantic schema enums
 LEVEL_MAP: Dict[str, str] = {
@@ -229,6 +246,166 @@ def format_application_status_display(
         return f"🔴 Expired / Deadline Passed{year_suffix}", "The official application submission deadline has passed."
     else:
         return f"⚪ Status Unknown / Unconfirmed{year_suffix}", "Application cycle dates are not published or unconfirmed in official circular."
+
+
+def humanize_criterion_type(crit_type: Optional[str]) -> str:
+    """Convert raw backend criterion type enums into student-friendly, human-readable labels."""
+    if not crit_type:
+        return "General Criterion"
+
+    clean = crit_type.strip().lower()
+    mapping = {
+        "education_level": "Education Level",
+        "academic_marks": "Academic Marks Requirement",
+        "income": "Family Income Ceiling",
+        "annual_family_income": "Family Income Ceiling",
+        "gender": "Gender Restriction",
+        "category": "Social Category",
+        "disability": "Disability Benchmark",
+        "state": "State / Domicile",
+        "course": "Degree / Discipline",
+        "general": "General Requirement",
+    }
+    return mapping.get(clean, clean.replace("_", " ").title())
+
+
+def get_record_category_label(r: Dict[str, Any]) -> str:
+    """Return the primary category label for a scholarship match record."""
+    outcome = r.get("match_outcome")
+    is_provisional = r.get("is_provisional", False)
+    ver_status = r.get("verification_status", "unverified")
+    app_status = (r.get("application_status") or "unknown").strip().lower()
+
+    if is_provisional or ver_status != "verified":
+        return "Provisional / Unverified"
+    elif outcome == "eligible":
+        if app_status == "open":
+            return "Confirmed Open"
+        else:
+            return "Historical / Unconfirmed"
+    elif outcome == "potentially_eligible":
+        return "Potentially Eligible"
+    elif outcome == "not_eligible":
+        return "Not Eligible"
+    return "Other"
+
+
+def get_record_status_label(r: Dict[str, Any]) -> str:
+    """Return the standardized application status label for filtering."""
+    app_status = (r.get("application_status") or "unknown").strip().lower()
+    if app_status == "open":
+        return "Open"
+    elif app_status in ("closed", "expired"):
+        return "Closed / Past Cycle"
+    else:
+        return "Unknown / Unconfirmed"
+
+
+def get_record_verification_label(r: Dict[str, Any]) -> str:
+    """Return the standardized verification label for filtering."""
+    is_provisional = r.get("is_provisional", False)
+    ver_status = r.get("verification_status", "unverified")
+    if ver_status == "verified" and not is_provisional:
+        return "Verified"
+    else:
+        return "Unverified / Provisional"
+
+
+def filter_match_results(
+    records: List[Dict[str, Any]],
+    query: str = "",
+    authority: str = "All",
+    status: str = "All",
+    verification: str = "All",
+    category: str = "All",
+) -> List[Dict[str, Any]]:
+    """Filter scholarship match results in-memory by search query and quick filters.
+
+    Supports:
+    - Multi-token case-insensitive search across scheme name, authority, description, explanation,
+      category/degree details, and criteria.
+    - Governing authority match (or 'All' / 'All Authorities').
+    - Application status match ('Open', 'Closed / Past Cycle', 'Unknown / Unconfirmed', or 'All').
+    - Verification match ('Verified', 'Unverified / Provisional', or 'All').
+    - Eligibility category match ('Confirmed Open', 'Historical / Unconfirmed', 'Potentially Eligible',
+      'Not Eligible', 'Provisional / Unverified', or 'All').
+    """
+    if not records:
+        return []
+
+    tokens = [t.lower() for t in query.strip().split() if t.strip()]
+
+    filtered: List[Dict[str, Any]] = []
+    for r in records:
+        # 1. Eligibility Category filter
+        if category and category not in ("All", "All Categories"):
+            cat_label = get_record_category_label(r)
+            clean_cat = category.strip().lower()
+            clean_label = cat_label.strip().lower()
+            if clean_cat != clean_label and clean_cat.replace(" ", "") != clean_label.replace(" ", ""):
+                continue
+
+        # 2. Authority filter
+        if authority and authority not in ("All", "All Authorities"):
+            r_auth = (r.get("government_authority") or "").strip().lower()
+            if r_auth != authority.strip().lower():
+                continue
+
+        # 3. Application status filter
+        if status and status not in ("All", "All Statuses"):
+            app_status = (r.get("application_status") or "unknown").strip().lower()
+            clean_status = status.strip().lower()
+            if clean_status in ("open", "confirmed open"):
+                if app_status != "open":
+                    continue
+            elif clean_status in ("closed", "closed / past cycle", "closed/past cycle", "historical / closed", "historical/closed", "expired"):
+                if app_status not in ("closed", "expired"):
+                    continue
+            elif clean_status in ("unknown", "unknown / unconfirmed", "unknown/unconfirmed", "status unconfirmed", "unconfirmed"):
+                if app_status in ("open", "closed", "expired"):
+                    continue
+
+        # 4. Verification filter
+        if verification and verification not in ("All", "All Verification", "All Verification Statuses"):
+            is_prov = r.get("is_provisional", False)
+            ver_status = r.get("verification_status", "unverified")
+            clean_ver = verification.strip().lower()
+            if clean_ver in ("verified", "verified circular"):
+                if is_prov or ver_status != "verified":
+                    continue
+            elif clean_ver in ("unverified", "provisional", "unverified / provisional", "unverified/provisional"):
+                if not is_prov and ver_status == "verified":
+                    continue
+
+        # 5. Search query tokens (AND search)
+        if tokens:
+            name_text = str(r.get("scheme_name") or "").lower()
+            auth_text = str(r.get("government_authority") or "").lower()
+            desc_text = str(r.get("description") or "").lower()
+            expl_text = str(r.get("explanation") or "").lower()
+            course_text = str(r.get("course") or "").lower()
+            edu_text = str(r.get("education_level") or "").lower()
+            cat_text = str(r.get("category") or "").lower()
+            year_text = str(r.get("scheme_year") or "").lower()
+
+            crit_texts = []
+            for key in ("passed_criteria", "failed_criteria", "unknown_criteria"):
+                crits = r.get(key) or []
+                for c in crits:
+                    if isinstance(c, dict):
+                        crit_texts.append(str(c.get("criterion_type") or "").lower())
+                        crit_texts.append(str(c.get("description") or "").lower())
+                        crit_texts.append(str(c.get("reason") or "").lower())
+                    elif isinstance(c, str):
+                        crit_texts.append(c.lower())
+
+            haystack = f"{name_text} {auth_text} {desc_text} {expl_text} {course_text} {edu_text} {cat_text} {year_text} {' '.join(crit_texts)}"
+            if not all(tok in haystack for tok in tokens):
+                continue
+
+        filtered.append(r)
+
+    return filtered
 
 
 def evaluate_student_matching(
