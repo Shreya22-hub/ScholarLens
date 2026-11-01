@@ -1,4 +1,6 @@
-# ScholarLens 🎓
+# Team Innovision
+
+# ScholarLens 🎓 
 
 **ScholarLens** is an open-source platform designed to help Indian students discover scholarship opportunities with **100% verified information** strictly grounded in authoritative government sources (e.g., National Scholarship Portal, UGC, AICTE, and Ministry websites).
 
