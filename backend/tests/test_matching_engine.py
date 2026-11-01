@@ -321,6 +321,7 @@ class TestMatchingServiceAndAPI(unittest.TestCase):
     def test_empty_scholarship_database(self):
         """8. Empty scholarship database handled gracefully."""
         empty_db_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        empty_db_file.close()
         empty_db = Database(empty_db_file.name)
         service = MatchingService(db=empty_db)
 

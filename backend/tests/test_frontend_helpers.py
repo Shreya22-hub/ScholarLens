@@ -228,12 +228,18 @@ class TestFrontendHelpers(unittest.TestCase):
             "unverified_count": 1,
             "results": [],
         }
-        with patch("requests.post", return_value=mock_resp):
-            success, err, res = evaluate_student_matching({"education_level": "undergraduate"})
-            self.assertTrue(success)
-            self.assertIsNone(err)
-            self.assertIsNotNone(res)
-            self.assertFalse(res.get("is_fallback"))
+        with patch.dict("os.environ", {"BACKEND_API_URL": "http://backend:8000/"}):
+            with patch("requests.post", return_value=mock_resp) as mock_post:
+                success, err, res = evaluate_student_matching({"education_level": "undergraduate"})
+                mock_post.assert_called_once_with(
+                    "http://backend:8000/api/matching/evaluate",
+                    json={"education_level": "undergraduate"},
+                    timeout=10.0,
+                )
+                self.assertTrue(success)
+                self.assertIsNone(err)
+                self.assertIsNotNone(res)
+                self.assertFalse(res.get("is_fallback"))
 
     def test_evaluate_student_matching_api_validation_error(self):
         """Test client returns explicit validation message when API returns 422."""
@@ -249,24 +255,24 @@ class TestFrontendHelpers(unittest.TestCase):
     def test_format_application_status_display(self):
         """Test honest display of application statuses without confusing verification status."""
         badge_open, help_open = format_application_status_display("open", "2026-27")
-        self.assertIn("🟢 Open for Applications (2026-27)", badge_open)
+        self.assertIn("Open for applications (2026-27)", badge_open)
         self.assertIn("accepted", help_open)
 
         badge_unconfirmed, _ = format_application_status_display("deadline_published_status_unknown", "2026-27")
-        self.assertIn("🟡 Deadline Published (Status Unconfirmed) (2026-27)", badge_unconfirmed)
+        self.assertIn("Deadline published (status unconfirmed) (2026-27)", badge_unconfirmed)
 
         badge_closed, help_closed = format_application_status_display("closed", "2019-2020")
-        self.assertIn("🔴 Closed / Past Cycle (2019-2020)", badge_closed)
+        self.assertIn("Closed / past cycle (2019-2020)", badge_closed)
         self.assertIn("historically", help_closed)
 
         badge_expired, _ = format_application_status_display("expired")
-        self.assertIn("🔴 Expired / Deadline Passed", badge_expired)
+        self.assertIn("Expired / deadline passed", badge_expired)
 
         badge_unk, _ = format_application_status_display("unknown")
-        self.assertIn("⚪ Status Unknown / Unconfirmed", badge_unk)
+        self.assertIn("Status unknown / unconfirmed", badge_unk)
 
         badge_none, _ = format_application_status_display(None)
-        self.assertIn("⚪ Status Unknown / Unconfirmed", badge_none)
+        self.assertIn("Status unknown / unconfirmed", badge_none)
 
     def test_categorize_open_verified_opportunity(self):
         """Scenario 1: Verified scholarship with confirmed open status is segregated into open_confirmed_eligible."""
