@@ -38,7 +38,7 @@ app.add_middleware(
 )
 
 # Database and Ingestion singletons
-db = get_db()
+db = get_db(settings.database_path)
 registry = SourceRegistry(db=db)
 pipeline = IngestionPipeline(registry=registry, db=db)
 matching_service = MatchingService(db=db)
@@ -176,3 +176,8 @@ def get_eligible_scholarships(profile: StudentProfile) -> List[ScholarshipMatchR
     """Retrieve only confirmed eligible, verified scholarship schemes for the student profile."""
     return matching_service.get_confirmed_eligible(profile)
 
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host=settings.backend_host, port=settings.backend_port)

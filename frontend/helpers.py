@@ -4,6 +4,7 @@ Handles input validation, payload transformation, result categorization,
 display formatting, and API client operations with fallback.
 """
 
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 import requests
@@ -237,15 +238,15 @@ def format_application_status_display(
     year_suffix = f" ({scheme_year})" if scheme_year else ""
 
     if status == "open":
-        return f"🟢 Open for Applications{year_suffix}", "Applications currently accepted as established by official circular."
+        return f"Open for applications{year_suffix}", "Applications currently accepted as established by official circular."
     elif status == "deadline_published_status_unknown":
-        return f"🟡 Deadline Published (Status Unconfirmed){year_suffix}", "A future deadline is published, but official opening dates or acceptance status are unconfirmed."
+        return f"Deadline published (status unconfirmed){year_suffix}", "A future deadline is published, but official opening dates or acceptance status are unconfirmed."
     elif status == "closed":
-        return f"🔴 Closed / Past Cycle{year_suffix}", "This application cycle is closed. Documented historically from official records."
+        return f"Closed / past cycle{year_suffix}", "This application cycle is closed. Documented historically from official records."
     elif status == "expired":
-        return f"🔴 Expired / Deadline Passed{year_suffix}", "The official application submission deadline has passed."
+        return f"Expired / deadline passed{year_suffix}", "The official application submission deadline has passed."
     else:
-        return f"⚪ Status Unknown / Unconfirmed{year_suffix}", "Application cycle dates are not published or unconfirmed in official circular."
+        return f"Status unknown / unconfirmed{year_suffix}", "Application cycle dates are not published or unconfirmed in official circular."
 
 
 def humanize_criterion_type(crit_type: Optional[str]) -> str:
@@ -410,13 +411,14 @@ def filter_match_results(
 
 def evaluate_student_matching(
     profile_data: Dict[str, Any],
-    backend_url: str = "http://127.0.0.1:8000",
+    backend_url: Optional[str] = None,
 ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
     """Submit student profile to /api/matching/evaluate with direct service fallback.
 
     Returns:
         (success, error_message, response_data)
     """
+    backend_url = (backend_url or os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")).rstrip("/")
     try:
         res = requests.post(f"{backend_url}/api/matching/evaluate", json=profile_data, timeout=10.0)
         if res.status_code == 200:

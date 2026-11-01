@@ -22,24 +22,24 @@ CUSTOM_CSS = """
 <style>
 /* Root Design Tokens */
 :root {
-    --sl-navy-dark: #0f172a;
-    --sl-navy-mid: #1e293b;
-    --sl-navy-light: #334155;
-    --sl-blue-primary: #2563eb;
-    --sl-blue-hover: #1d4ed8;
-    --sl-blue-light: #eff6ff;
-    --sl-emerald-primary: #059669;
-    --sl-emerald-bg: #ecfdf5;
-    --sl-emerald-border: #a7f3d0;
-    --sl-amber-primary: #d97706;
-    --sl-amber-bg: #fffbeb;
-    --sl-amber-border: #fde68a;
-    --sl-red-primary: #dc2626;
-    --sl-red-bg: #fef2f2;
-    --sl-red-border: #fecaca;
-    --sl-slate-bg: #f8fafc;
-    --sl-border-color: #e2e8f0;
-    --sl-card-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+    --sl-navy-dark: #24352e;
+    --sl-navy-mid: #34483e;
+    --sl-navy-light: #52635a;
+    --sl-blue-primary: #356b55;
+    --sl-blue-hover: #285742;
+    --sl-blue-light: #edf4ef;
+    --sl-emerald-primary: #386b4d;
+    --sl-emerald-bg: #edf4ee;
+    --sl-emerald-border: #c9dbca;
+    --sl-amber-primary: #875b1d;
+    --sl-amber-bg: #f8f2e7;
+    --sl-amber-border: #e6d5b5;
+    --sl-red-primary: #a0443d;
+    --sl-red-bg: #f8eeec;
+    --sl-red-border: #e5c9c4;
+    --sl-slate-bg: #f4f5f1;
+    --sl-border-color: #dce1da;
+    --sl-card-shadow: 0 1px 3px rgba(36, 53, 46, 0.05);
 }
 
 /* Page Layout Refinements */
@@ -712,6 +712,537 @@ div[data-testid="stExpander"] {
     margin: 0 auto 0.75rem auto;
     line-height: 1.45;
 }
+
+/* A quieter, paper-like interface with readable body text and clear controls. */
+.stApp {
+    background: #f7f8f5;
+    color: #293a32;
+}
+
+.main .block-container {
+    max-width: 1180px;
+    padding-top: 1.25rem;
+}
+
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6 {
+    color: #24352e;
+    letter-spacing: -0.01em;
+}
+
+.stApp p,
+.stApp li,
+.stApp label,
+.stApp [data-testid="stCaptionContainer"] {
+    line-height: 1.6;
+}
+
+.stApp [data-testid="stWidgetLabel"] p,
+.stApp [data-testid="stWidgetLabel"] label,
+.stApp [data-testid="stCheckbox"] label,
+.stApp [data-testid="stRadio"] label {
+    color: #293a32 !important;
+}
+
+section[data-testid="stSidebar"] {
+    background: #f0f2ed;
+    border-right: 1px solid #dce1da;
+}
+
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] code {
+    color: #293a32;
+}
+
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] code {
+    background: #e4e9e2;
+}
+
+.stApp section[data-testid="stSidebar"] .sl-sidebar-stat {
+    background: #e7ece5;
+    border-radius: 5px;
+    color: #26382f !important;
+    font-size: 0.94rem;
+    font-weight: 600;
+    line-height: 1.55;
+    margin: 0.55rem 0;
+    padding: 0.55rem 0.65rem;
+}
+
+.stApp section[data-testid="stSidebar"] .sl-sidebar-stat strong {
+    color: #17271f !important;
+    font-weight: 750;
+}
+
+.sl-hero-container {
+    background: #eef2ec;
+    border: 1px solid #dce3da;
+    border-left: 4px solid #356b55;
+    border-radius: 5px;
+    box-shadow: none;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.sl-hero-tag {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: #52635a;
+    padding: 0;
+    margin-bottom: 0.45rem;
+    letter-spacing: 0.07em;
+}
+
+.sl-hero-title {
+    color: #24352e;
+    font-size: 2rem;
+    font-weight: 750;
+    margin-bottom: 0.35rem;
+}
+
+.sl-hero-subtitle {
+    color: #43544a;
+    font-size: 1rem;
+    line-height: 1.65;
+    margin-bottom: 1rem;
+    max-width: 780px;
+}
+
+.sl-trust-grid {
+    gap: 0.45rem 1.4rem;
+}
+
+.sl-trust-badge {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: #43544a;
+    padding: 0;
+    backdrop-filter: none;
+    font-size: 0.83rem;
+}
+
+.sl-trust-badge b {
+    color: #2f5f49;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.25rem;
+    border-bottom: 1px solid #d5dcd4;
+    padding-bottom: 0;
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 4px 4px 0 0;
+    color: #52635a;
+    padding: 0.65rem 0.9rem;
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: #edf2ec;
+    border-bottom: 2px solid #356b55;
+    color: #285742;
+}
+
+.stTabs [data-baseweb="tab-highlight"] {
+    background: #356b55;
+}
+
+div.stButton > button[kind="primary"] {
+    background: #356b55;
+    border-color: #356b55;
+    border-radius: 5px;
+    box-shadow: none;
+}
+
+div.stButton > button[kind="primary"]:hover {
+    background: #285742;
+    border-color: #285742;
+    box-shadow: none;
+}
+
+div.stButton > button:not([kind="primary"]) {
+    border-radius: 5px;
+}
+
+div[data-testid="stMetric"],
+div[data-testid="stForm"],
+div[data-testid="stExpander"] {
+    border-color: #dce1da;
+    border-radius: 6px;
+    box-shadow: none;
+}
+
+div[data-testid="stForm"] {
+    padding: 1.5rem;
+}
+
+.sl-section-badge {
+    background: #356b55;
+    box-shadow: none;
+}
+
+.sl-principle-card,
+.sl-key-facts-box,
+.sl-result-caption,
+.sl-empty-search-state {
+    background: #f4f5f1;
+    border-color: #dce1da;
+    border-radius: 6px;
+}
+
+.sl-principle-card {
+    padding: 0.7rem 0.8rem;
+}
+
+.sl-kpi-card {
+    border-radius: 6px;
+    border-top-width: 2px;
+    box-shadow: none;
+    min-height: 145px;
+    transition: none;
+}
+
+.sl-kpi-card:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.sl-kpi-card-open,
+.sl-kpi-card-hist,
+.sl-kpi-card-pot,
+.sl-kpi-card-not {
+    background: #ffffff;
+}
+
+.sl-kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.sl-card-authority-badge {
+    background: #edf4ef;
+    border-color: #d5e2d7;
+    border-radius: 4px;
+    color: #356047;
+}
+
+.sl-card-title {
+    font-size: 1.12rem;
+    line-height: 1.45;
+}
+
+.sl-key-facts-box {
+    gap: 1rem;
+    padding: 0.9rem 1rem;
+}
+
+.sl-fact-title {
+    color: #52635a;
+}
+
+.sl-fact-content {
+    line-height: 1.45;
+}
+
+.sl-pill-badge,
+.sl-status-chip,
+.sl-criteria-pill,
+.sl-kpi-badge,
+.sl-filter-count-badge,
+.sl-active-filter-tag {
+    border-radius: 4px;
+    letter-spacing: 0;
+}
+
+.sl-criterion-item,
+.sl-citation-quote {
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.sl-portal-btn {
+    color: #285742;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.stTextInput input,
+.stNumberInput input,
+.stSelectbox [data-baseweb="select"] > div,
+.stTextArea textarea {
+    border-radius: 5px;
+}
+
+.stTextInput input:focus,
+.stNumberInput input:focus,
+.stTextArea textarea:focus {
+    border-color: #356b55;
+    box-shadow: 0 0 0 1px #356b55;
+}
+
+@media (max-width: 700px) {
+    .main .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .sl-hero-container {
+        padding: 1.2rem;
+    }
+
+    .sl-hero-title {
+        font-size: 1.7rem;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        font-size: 0.84rem;
+        padding: 0.55rem 0.6rem;
+    }
+}
+
+/* Keep custom surfaces aligned with the theme selected in Streamlit's menu. */
+.stApp {
+    --sl-navy-dark: light-dark(#24352e, #e5eee8);
+    --sl-navy-mid: light-dark(#34483e, #c8d4cc);
+    --sl-navy-light: light-dark(#52635a, #aebcb3);
+    --sl-blue-primary: light-dark(#356b55, #8fbea0);
+    --sl-blue-hover: light-dark(#285742, #a8d1b4);
+    --sl-blue-light: light-dark(#edf4ef, #26382e);
+    --sl-emerald-primary: light-dark(#386b4d, #9bcba3);
+    --sl-emerald-bg: light-dark(#edf4ee, #26382b);
+    --sl-emerald-border: light-dark(#c9dbca, #48634b);
+    --sl-amber-primary: light-dark(#875b1d, #e6bd78);
+    --sl-amber-bg: light-dark(#f8f2e7, #3c3325);
+    --sl-amber-border: light-dark(#e6d5b5, #70582f);
+    --sl-red-primary: light-dark(#a0443d, #e89a91);
+    --sl-red-bg: light-dark(#f8eeec, #3e2929);
+    --sl-red-border: light-dark(#e5c9c4, #71413e);
+    --sl-slate-bg: light-dark(#f4f5f1, #222a25);
+    --sl-border-color: light-dark(#dce1da, #3a4740);
+    --sl-card-shadow: light-dark(0 1px 3px rgba(36, 53, 46, 0.05), none);
+    background: light-dark(#f7f8f5, #0e1117);
+    color: light-dark(#293a32, #e5eee8);
+}
+
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6 {
+    color: var(--sl-navy-dark);
+}
+
+.stApp [data-testid="stWidgetLabel"],
+.stApp [data-testid="stWidgetLabel"] *,
+.stApp [data-testid="stCheckbox"] label,
+.stApp [data-testid="stRadio"] label {
+    color: light-dark(#293a32, #e5eee8) !important;
+}
+
+section[data-testid="stSidebar"] {
+    background: light-dark(#f0f2ed, #171c19);
+    border-color: var(--sl-border-color);
+}
+
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] code {
+    color: light-dark(#293a32, #d6e0d9);
+}
+
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] code {
+    background: light-dark(#e4e9e2, #28332c);
+}
+
+.stApp section[data-testid="stSidebar"] .sl-sidebar-stat {
+    background: light-dark(#e7ece5, #26332b);
+    color: light-dark(#26382f, #dce8df) !important;
+}
+
+.stApp section[data-testid="stSidebar"] .sl-sidebar-stat strong {
+    color: light-dark(#17271f, #eff6f0) !important;
+}
+
+.sl-hero-container {
+    background: light-dark(#eef2ec, #19231d);
+    border-color: var(--sl-border-color);
+    border-left-color: var(--sl-blue-primary);
+}
+
+.sl-hero-tag,
+.sl-hero-subtitle,
+.sl-trust-badge {
+    color: var(--sl-navy-light);
+}
+
+.sl-hero-title {
+    color: var(--sl-navy-dark);
+}
+
+.sl-trust-badge b {
+    color: var(--sl-blue-primary);
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    border-color: var(--sl-border-color);
+}
+
+.stTabs [data-baseweb="tab"] {
+    color: var(--sl-navy-light);
+}
+
+.stTabs [data-baseweb="tab"]:hover,
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: light-dark(#edf2ec, #202c24);
+    color: var(--sl-blue-primary);
+}
+
+.stTabs [data-baseweb="tab-highlight"] {
+    background: var(--sl-blue-primary);
+}
+
+div.stButton > button[kind="primary"] {
+    background: var(--sl-blue-primary);
+    border-color: var(--sl-blue-primary);
+    color: light-dark(#ffffff, #102018);
+}
+
+div.stButton > button[kind="primary"]:hover {
+    background: var(--sl-blue-hover);
+    border-color: var(--sl-blue-hover);
+}
+
+div.stButton > button:not([kind="primary"]) {
+    background: light-dark(#ffffff, #1d2420);
+    border-color: var(--sl-border-color);
+    color: var(--sl-navy-dark);
+}
+
+div.stButton > button:not([kind="primary"]):hover {
+    border-color: var(--sl-blue-primary);
+    color: var(--sl-blue-primary);
+}
+
+div[data-testid="stMetric"],
+div[data-testid="stForm"],
+div[data-testid="stExpander"] {
+    background: light-dark(#ffffff, #171d19);
+    border-color: var(--sl-border-color);
+}
+
+.sl-principle-card,
+.sl-key-facts-box,
+.sl-result-caption,
+.sl-empty-search-state,
+.sl-pillar-chip,
+.sl-active-filter-tag {
+    background: var(--sl-slate-bg);
+    border-color: var(--sl-border-color);
+    color: var(--sl-navy-dark);
+}
+
+.sl-kpi-card,
+.sl-kpi-card-open,
+.sl-kpi-card-hist,
+.sl-kpi-card-pot,
+.sl-kpi-card-not {
+    background: light-dark(#ffffff, #171d19);
+    border-color: var(--sl-border-color);
+}
+
+.sl-card-authority-badge {
+    background: var(--sl-blue-light);
+    border-color: var(--sl-emerald-border);
+    color: var(--sl-blue-primary);
+}
+
+.sl-fact-title,
+.sl-fact-sub {
+    color: var(--sl-navy-light);
+}
+
+.sl-pill-unverified {
+    background: light-dark(#fff7ed, #3b2d21);
+    border-color: var(--sl-amber-border);
+    color: var(--sl-amber-primary);
+}
+
+.sl-pill-slate,
+.sl-kpi-badge-hist {
+    background: var(--sl-slate-bg);
+    border-color: var(--sl-border-color);
+    color: var(--sl-navy-light);
+}
+
+.sl-audit-banner {
+    background: light-dark(#fff7ed, #382a20);
+    border-color: var(--sl-amber-border);
+    border-left-color: var(--sl-amber-primary);
+}
+
+.sl-audit-title,
+.sl-audit-desc {
+    color: var(--sl-amber-primary);
+}
+
+.sl-criterion-pass {
+    background: var(--sl-emerald-bg);
+    border-left-color: var(--sl-emerald-primary);
+    color: light-dark(#14532d, #c8e6ce);
+}
+
+.sl-criterion-fail {
+    background: var(--sl-red-bg);
+    border-left-color: var(--sl-red-primary);
+    color: light-dark(#7f1d1d, #f0c6c1);
+}
+
+.sl-criterion-unknown {
+    background: var(--sl-amber-bg);
+    border-left-color: var(--sl-amber-primary);
+    color: light-dark(#78350f, #f0d7a8);
+}
+
+.sl-citation-quote {
+    background: var(--sl-slate-bg);
+    border-left-color: var(--sl-blue-primary);
+    color: var(--sl-navy-dark);
+}
+
+.sl-portal-btn {
+    color: var(--sl-blue-primary);
+}
+
+.stTextInput input,
+.stNumberInput input,
+.stSelectbox [data-baseweb="select"] > div,
+.stTextArea textarea {
+    background: light-dark(#ffffff, #20262d);
+    color: light-dark(#293a32, #e5eee8);
+}
+
+.stTextInput input::placeholder,
+.stTextArea textarea::placeholder {
+    color: light-dark(#748078, #a2ada5);
+}
+
+.stTextInput input:focus,
+.stNumberInput input:focus,
+.stTextArea textarea:focus {
+    border-color: var(--sl-blue-primary);
+    box-shadow: 0 0 0 1px var(--sl-blue-primary);
+}
 </style>
 """
 
@@ -722,29 +1253,29 @@ def inject_custom_styles() -> None:
 
 
 def render_hero_section() -> None:
-    """Render the executive ScholarLens Hero Header with value proposition and trust indicators."""
+    """Render the ScholarLens introduction and its core information safeguards."""
     hero_html = """
     <div class="sl-hero-container">
         <div class="sl-hero-tag">
-            <span>Evidence-Based Discovery Platform</span>
+            <span>Scholarship finder for students in India</span>
         </div>
         <div class="sl-hero-title">ScholarLens</div>
         <div class="sl-hero-subtitle">
-            Evidence-backed scholarship discovery tracking official portals and published circulars for Indian students.
-            Discover eligible opportunities with deterministic rule matching, verifiable source citations, and human-friendly explanations.
+            Find scholarships listed by official government sources. Compare your profile with published eligibility rules
+            and check the source evidence behind each result.
         </div>
         <div class="sl-trust-grid">
             <div class="sl-trust-badge">
-                <span>🛡️</span>
-                <span><b>Deterministic Evaluation</b> — Strictly Grounded in Circulars</span>
+                <span>•</span>
+                <span><b>Official sources</b> with links to the original pages</span>
             </div>
             <div class="sl-trust-badge">
-                <span>🏛️</span>
-                <span><b>Tracked Official Portals</b> — AICTE • UGC • Central Ministries</span>
+                <span>•</span>
+                <span><b>Clear eligibility rules</b> with pass, fail, or unknown results</span>
             </div>
             <div class="sl-trust-badge">
-                <span>🎯</span>
-                <span><b>Explainable Rules</b> — Criteria Passed & Failed Breakdowns</span>
+                <span>•</span>
+                <span><b>Verification status</b> shown for every opportunity</span>
             </div>
         </div>
     </div>
@@ -827,9 +1358,8 @@ def render_kpi_dashboard(
         f"""
         <div class="sl-audit-banner">
             <div class="sl-audit-header">
-                <span class="sl-audit-shield">🛡️</span>
                 <div>
-                    <div class="sl-audit-title">Data-Quality & Provenance Audit Indicator</div>
+                    <div class="sl-audit-title">Data quality and source review</div>
                     <div class="sl-audit-desc">
                         <b>{unverified_count} provisional record(s)</b> with unverified source evidence are isolated in the <b>Provisional / Unverified</b> tab.
                         This audit count identifies data-quality status and is not an additional category to add to the verified outcome totals above.
@@ -844,7 +1374,7 @@ def render_kpi_dashboard(
     st.markdown(
         """
         <div class="sl-result-caption">
-            📊 <b>Result Categorization:</b> Each scholarship appears in exactly one primary subtab below.
+            <b>Result categories:</b> Each scholarship appears in exactly one primary subtab below.
             The primary outcome metrics reflect verified scholarships evaluated against your profile.
             A scholarship matching eligibility criteria is never counted as confirmed open unless its application status is verified as open.
         </div>

@@ -5,11 +5,12 @@ and extracted scholarship records with duplicate prevention.
 """
 
 from datetime import datetime, timezone
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import re
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from backend.app.schemas.scholarship import (
@@ -48,11 +49,16 @@ class Database:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Create a connection with row factory."""
+    @contextmanager
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+        """Create a transaction-scoped connection that is always closed."""
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_db(self) -> None:
         """Create database tables if they do not exist."""
@@ -691,6 +697,10 @@ _db_instance: Optional[Database] = None
 def get_db(db_path: Optional[str] = None) -> Database:
     """Singleton-style database provider."""
     global _db_instance
-    if _db_instance is None or (db_path and str(_db_instance.db_path) != str(db_path)):
-        _db_instance = Database(db_path or "data/scholarlens.db")
+    if db_path is None:
+        from backend.app.config import settings
+
+        db_path = settings.database_path
+    if _db_instance is None or str(_db_instance.db_path) != str(db_path):
+        _db_instance = Database(db_path)
     return _db_instance

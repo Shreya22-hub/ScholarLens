@@ -1,0 +1,57 @@
+services:
+  backend:
+    build: .
+    command: ["python", "-m", "backend.app.main"]
+    env_file:
+      - .env
+    environment:
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: "8000"
+      BACKEND_CORS_ORIGINS: '["${FRONTEND_PUBLIC_URL:-http://localhost:8501}"]'
+      DATABASE_PATH: /data/scholarlens.db
+      SOURCES_CONFIG_PATH: /app/config/sources.json
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - scholar_data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    command:
+      - streamlit
+      - run
+      - frontend/app.py
+      - --server.address
+      - 0.0.0.0
+      - --server.port
+      - "8501"
+      - --server.headless
+      - "true"
+    env_file:
+      - .env
+    environment:
+      BACKEND_API_URL: http://backend:8000
+      DATABASE_PATH: /data/scholarlens.db
+      SOURCES_CONFIG_PATH: /app/config/sources.json
+    ports:
+      - "${FRONTEND_PORT:-8501}:8501"
+    volumes:
+      - scholar_data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  scholar_data:

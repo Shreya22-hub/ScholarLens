@@ -1,6 +1,6 @@
 # ScholarLens 🎓
 
-**ScholarLens** is an open-source platform designed to help Indian students discover scholarship opportunities with **100% verified information** strictly grounded in authoritative government sources (e.g., National Scholarship Portal, UGC, AICTE, and Ministry websites).
+**ScholarLens** is an open-source platform designed to help Indian students discover scholarship opportunities from authoritative government sources (e.g., National Scholarship Portal, UGC, AICTE, and Ministry websites). Records are labelled with their verification status; information is not presented as verified unless it meets the project's evidence checks.
 
 To prevent hallucinations, ScholarLens enforces strict schema validation, source URL tracking, verbatim quotation citations from official circulars, and transparent verification statuses.
 
@@ -130,9 +130,55 @@ uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
 ### 2. Start the Streamlit Frontend
 In a separate terminal (with virtual environment activated):
 ```bash
-streamlit run frontend/app.py --server.port 8501
+streamlit run frontend/app.py --server.address 127.0.0.1 --server.port 8501
 ```
 - Open browser at: [http://localhost:8501](http://localhost:8501)
+
+The frontend reads `BACKEND_API_URL` (default: `http://127.0.0.1:8000`). Backend settings such as
+`DATABASE_PATH`, `SOURCES_CONFIG_PATH`, `BACKEND_HOST`, `BACKEND_PORT`, and `BACKEND_CORS_ORIGINS`
+are read from the environment or `.env`. Running `python -m backend.app.main` starts the API using
+the configured host and port. Relative paths are resolved from the directory where the app starts.
+
+### Deploy with Docker Compose
+
+Docker Engine and the Docker Compose plugin are required. This setup runs the API and Streamlit
+frontend as separate containers, serves the UI on port 8501, and stores the SQLite database in a
+persistent Docker volume.
+
+1. Copy `.env.example` to `.env` and set `FRONTEND_PUBLIC_URL` to the UI's public origin (scheme
+   and host, without a path). For example, use `https://scholar.example.com` when a reverse proxy
+   provides HTTPS.
+2. From the repository directory, build and start both services:
+
+   ```bash
+   docker compose up --build -d
+   ```
+
+3. Check service health and logs:
+
+   ```bash
+   docker compose ps
+   docker compose logs -f backend frontend
+   ```
+
+4. Open `http://localhost:8501` (or your configured public URL). The API health check is at
+   `http://localhost:8000/health` when the API port is exposed.
+
+The compose file configures the API to listen on all container interfaces, points the frontend
+to the backend service by its Compose name, restricts CORS to `FRONTEND_PUBLIC_URL`, and stores
+the database at `/data/scholarlens.db` on the `scholar_data` volume. Back up that volume regularly;
+removing it deletes the stored records and ingestion history. For a public deployment, place the
+services behind a TLS-enabled reverse proxy, expose only the ports you need, use a persistent
+host/volume, forward WebSocket connections for Streamlit, and configure the public URL and network
+firewall accordingly. Do not commit `.env`.
+
+To stop the services without deleting the database:
+
+```bash
+docker compose down
+```
+
+Do not use `docker compose down -v` unless you intend to delete the persistent database volume.
 
 ### 3. Trigger Ingestion
 
@@ -159,11 +205,12 @@ curl -X GET "http://127.0.0.1:8000/api/scholarships"
 
 ## 🧪 Running Tests
 
-The test suite contains **41 automated tests** covering schemas, extractors, storage, polite fetcher, quality normalizers, and API endpoints:
+The automated tests cover schemas, extractors, storage, polite fetcher, quality normalizers,
+matching, frontend helpers, and API endpoints:
 
 ```bash
 # Run full test suite with pytest:
-pytest backend/tests
+python -m pytest backend/tests -q
 
 # Or run individual test modules:
 pytest backend/tests/test_scholarship_schema.py
