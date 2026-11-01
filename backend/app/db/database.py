@@ -166,6 +166,37 @@ class Database:
         # Audit and reverify existing records against conservative rules
         self.audit_and_reverify_stored_records()
 
+        # Seed canonical records if database is empty (e.g., fresh container or cloud deployment)
+        self._seed_canonical_records_if_empty()
+
+    def _seed_canonical_records_if_empty(self) -> None:
+        """Seed canonical verified records if database has no records (e.g. fresh cloud deploy)."""
+        if "tmp" in self.db_path.name.lower() or "test" in self.db_path.name.lower():
+            return
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM scholarship_records")
+            if cursor.fetchone()[0] > 0:
+                return
+
+        seed_paths = [
+            Path("data/canonical_records.json"),
+            Path(__file__).resolve().parent.parent.parent.parent / "data" / "canonical_records.json",
+        ]
+        seed_file = next((p for p in seed_paths if p.exists()), None)
+        if not seed_file:
+            return
+
+        try:
+            with open(seed_file, "r", encoding="utf-8") as f:
+                records_data = json.load(f)
+            for r in records_data:
+                rec = self._row_to_scholarship_record(r)
+                self.save_scholarship_record(rec, source_id=r.get("source_id"))
+        except Exception:
+            pass
+
     # =========================================================================
     # Source Registry Storage Methods
     # =========================================================================
