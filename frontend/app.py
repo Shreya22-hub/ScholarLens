@@ -379,12 +379,6 @@ with tab_matcher:
                 "Use the sidebar controls to trigger polite ingestion and inspect portal responses."
             )
         else:
-            if match_res.get("is_fallback"):
-                st.warning(
-                    "**Notice: Local fallback engine active** — The backend API server is unreachable. "
-                    "These results were computed using the local in-process fallback engine, not verified through the live backend API service."
-                )
-
             results = match_res.get("results", [])
             categorized = categorize_match_results(results)
             confirmed_eligible = categorized["confirmed_eligible"]
