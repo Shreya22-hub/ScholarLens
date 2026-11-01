@@ -7,6 +7,7 @@ and inspect recent fetch telemetry.
 
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional
@@ -37,7 +38,6 @@ from frontend.styles import (
 # Configure page
 st.set_page_config(
     page_title="ScholarLens | Verified Indian Scholarships",
-    page_icon="🎓",
     layout="wide",
 )
 
@@ -48,7 +48,7 @@ inject_custom_styles()
 render_hero_section()
 
 # Configuration
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
 def fetch_backend_data(endpoint: str) -> Optional[Any]:
@@ -119,47 +119,50 @@ sources_data = fetch_backend_data("/api/sources") or []
 st.sidebar.markdown(
     """
     <div class="sl-sidebar-brand">
-        <h2>🎓 ScholarLens</h2>
-        <p>Evidence-Backed Scholarship Discovery Engine</p>
+        <h2>ScholarLens</h2>
+        <p>Scholarships from official Indian sources</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
 # Core Platform Statistics & Overview
-st.sidebar.markdown(f"**Tracked Official Portals**: `{len(sources_data)}` registered")
-st.sidebar.markdown("**Verification Standard**: `Evidence-Grounded in Official Circulars`")
+st.sidebar.markdown(
+    f'<div class="sl-sidebar-stat"><strong>Official sources</strong> · {len(sources_data)} registered</div>'
+    '<div class="sl-sidebar-stat"><strong>Evidence</strong> · Published pages and circulars</div>',
+    unsafe_allow_html=True,
+)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🛡️ Grounding Principles")
+st.sidebar.markdown("### How information is checked")
 st.sidebar.markdown(
     """
     <div class="sl-principle-card">
-        <h4>Deterministic Matching</h4>
-        <p>Eligibility rules, benefits, and deadlines are derived strictly from published circular text without generative guessing.</p>
+        <h4>Eligibility</h4>
+        <p>Your profile is compared with the criteria recorded for each scheme.</p>
     </div>
     <div class="sl-principle-card">
-        <h4>Verbatim Quotations</h4>
-        <p>Every criterion statement is backed by verifiable excerpts from official source documents.</p>
+        <h4>Source evidence</h4>
+        <p>Open the linked official page and review the quoted evidence.</p>
     </div>
     <div class="sl-principle-card">
-        <h4>Polite & Authorized Crawling</h4>
-        <p>Strictly respects portal robots.txt, applies connection timeouts, and prohibits arbitrary URL crawling.</p>
+        <h4>Respectful access</h4>
+        <p>Only registered sources are checked, following their published access rules.</p>
     </div>
     <div class="sl-principle-card">
-        <h4>Transparent Audit Isolation</h4>
-        <p>Unverified or provisional records are strictly segregated from confirmed eligible opportunities.</p>
+        <h4>Verification status</h4>
+        <p>Unverified information is labelled and is not shown as confirmed eligibility.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 st.sidebar.caption(
-    "ℹ️ *Independent discovery tool. References publicly available government circulars; "
+    "*Independent discovery tool. References publicly available government circulars; "
     "not an officially endorsed government portal.*"
 )
 
 # Collapsed Admin & Pipeline Controls Expander
-with st.sidebar.expander("🛠️ Admin & Pipeline Controls", expanded=False):
+with st.sidebar.expander("Admin & Pipeline Controls", expanded=False):
     st.caption("Authorized ingestion pipeline for registered government scholarship portals.")
 
     source_options = {"All Enabled Sources": None}
@@ -173,7 +176,7 @@ with st.sidebar.expander("🛠️ Admin & Pipeline Controls", expanded=False):
     )
     selected_source_id = source_options[selected_source_label]
 
-    if st.button("🚀 Run Polite Ingestion", use_container_width=True, key="sidebar_run_ingest"):
+    if st.button("Run polite ingestion", use_container_width=True, key="sidebar_run_ingest"):
         with st.spinner("Executing polite ingestion pipeline (checking robots.txt & official portals)..."):
             ingest_result = trigger_ingestion(selected_source_id)
             if "error" in ingest_result:
@@ -191,15 +194,15 @@ st.sidebar.caption("ScholarLens v1.2 • FORGE'26 Hackathon\n\nOfficial Portal G
 # =============================================================================
 
 tab_matcher, tab_scholarships, tab_sources, tab_history = st.tabs(
-    ["🎯 Eligibility Matcher", "📜 Stored Scholarship Records", "🏛️ Official Sources Registry", "📊 Ingestion Telemetry"]
+    ["Eligibility", "Records", "Sources", "History"]
 )
 
 # -----------------------------------------------------------------------------
 # Tab 1: Eligibility Matcher (Phase 4)
 # -----------------------------------------------------------------------------
 with tab_matcher:
-    st.subheader("🎯 Explainable Scholarship Matching Engine")
-    st.caption("Enter your academic and profile details to receive transparent, rule-based eligibility evaluations.")
+    st.subheader("Find scholarships that may fit")
+    st.caption("Add the details you want considered. Each result shows which criteria match and what still needs checking.")
 
     with st.form("student_profile_matching_form"):
         # Section 1: Academic Details
@@ -248,7 +251,7 @@ with tab_matcher:
                 help="Aggregate percentage in previous qualifying exam. Leave 0.0 if unspecified.",
             )
         with col_marks_hint:
-            st.caption("ℹ️ **Academic Eligibility Guidance**")
+            st.caption("**Academic eligibility guidance**")
             st.caption("Many government schemes require minimum academic thresholds (e.g., ≥ 50% or 60%). Leave 0.0 to evaluate schemes without marks restrictions.")
 
         st.markdown("---")
@@ -329,11 +332,11 @@ with tab_matcher:
                 help="Gross annual parental income from all sources. Leave 0 if unspecified.",
             )
         with col_income_hint:
-            st.caption("💡 **Income Ceiling Guidance**")
+            st.caption("**Income ceiling guidance**")
             st.caption("Government schemes commonly cap income at **₹ 2.5 Lakh**, **₹ 6 Lakh**, or **₹ 8 Lakh** per annum. Leaving 0 permits matching schemes without income caps.")
 
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-        run_match = st.form_submit_button("🔍 Find Matching Scholarships", use_container_width=True)
+        run_match = st.form_submit_button("Find matching scholarships", use_container_width=True)
 
     if run_match:
         is_valid, err_msg, profile_payload = validate_and_build_profile(
@@ -348,14 +351,14 @@ with tab_matcher:
         )
 
         if not is_valid:
-            st.error(f"⚠️ **Validation Notice**: {err_msg}")
+            st.error(f"**Validation notice**: {err_msg}")
             st.session_state.pop("match_res", None)
         else:
             with st.spinner("Evaluating profile against official scholarship criteria..."):
                 success, err_api, match_res = evaluate_student_matching(profile_payload)
 
             if not success:
-                st.error(f"⚠️ {err_api}")
+                st.error(err_api)
                 st.session_state.pop("match_res", None)
             else:
                 st.session_state["match_res"] = match_res
@@ -369,7 +372,7 @@ with tab_matcher:
     if match_res is not None:
         if not match_res or match_res.get("total_evaluated", 0) == 0:
             st.info(
-                "📌 **No scholarship records found in local database.**\n\n"
+                "**No scholarship records found in local database.**\n\n"
                 "Official government scholarship portals (such as National Scholarship Portal, UGC, and AICTE) "
                 "enforce access restrictions (such as robots.txt disallowances, SSL certificate requirements, or dynamic dashboards) "
                 "which our polite crawler strictly respects without unauthorized bypass.\n\n"
@@ -378,7 +381,7 @@ with tab_matcher:
         else:
             if match_res.get("is_fallback"):
                 st.warning(
-                    "⚠️ **Notice: Local Fallback Engine Active** — The backend API server is unreachable. "
+                    "**Notice: Local fallback engine active** — The backend API server is unreachable. "
                     "These results were computed using the local in-process fallback engine, not verified through the live backend API service."
                 )
 
@@ -422,21 +425,21 @@ with tab_matcher:
 
                 # 1. Eligibility badge chip
                 if outcome == "eligible" and not is_prov and ver_status == "verified":
-                    elig_badge = "✅ Criteria Satisfied"
+                    elig_badge = "Criteria satisfied"
                     elig_chip_class = "sl-pill-open"
                 elif outcome == "potentially_eligible":
-                    elig_badge = "🟡 Pending Information"
+                    elig_badge = "Pending information"
                     elig_chip_class = "sl-pill-pending"
                 else:
-                    elig_badge = "❌ Criteria Not Met"
+                    elig_badge = "Criteria not met"
                     elig_chip_class = "sl-pill-closed"
 
                 # 2. Evidence verification badge chip
                 if ver_status == "verified" and not is_prov:
-                    veri_badge = "🛡️ Verified Circular"
+                    veri_badge = "Verified circular"
                     veri_chip_class = "sl-pill-open"
                 else:
-                    veri_badge = "⚠️ Unverified / Provisional"
+                    veri_badge = "Unverified / provisional"
                     veri_chip_class = "sl-pill-unverified"
 
                 # 3. Application cycle badge chip
@@ -485,21 +488,21 @@ with tab_matcher:
                     # Contextual Status Callouts
                     if is_prov or show_provisional_alert:
                         st.warning(
-                            "⚠️ **Provisional Evaluation Notice**: This scholarship record is UNVERIFIED against primary official circulars. "
+                            "**Provisional evaluation notice**: This scholarship record is UNVERIFIED against primary official circulars. "
                             "Eligibility cannot be confirmed until primary documents are validated."
                         )
                     elif outcome == "eligible" and not is_prov and ver_status == "verified":
                         if app_status == "open":
-                            st.success("🟢 **Confirmed Open Opportunity**: Verified against official circulars and currently accepting student applications.")
+                            st.success("**Confirmed open opportunity**: Verified against official circulars and currently accepting student applications.")
                         elif app_status in ("closed", "expired"):
                             st.info(
-                                f"🔴 **Historical Scholarship — Not Currently Open ({scheme_year or 'Past Cycle'})**: "
+                                f"**Historical scholarship — not currently open ({scheme_year or 'Past cycle'})**: "
                                 "Your profile matches the published criteria for this scheme, but this application cycle is closed. "
                                 "Documented historically for benchmark reference. Do not attempt to apply for past cycles."
                             )
                         else:
                             st.warning(
-                                "⚠️ **Application status has not been confirmed. Check the official source before applying.** "
+                                "**Application status has not been confirmed. Check the official source before applying.** "
                                 "Your profile matches the published guideline criteria, but active application dates have not been established by primary evidence."
                             )
 
@@ -508,16 +511,16 @@ with tab_matcher:
                         f"""
                         <div class="sl-key-facts-box">
                             <div class="sl-fact-unit">
-                                <span class="sl-fact-title">💰 Scholarship Benefit</span>
+                                <span class="sl-fact-title">Scholarship benefit</span>
                                 <span class="sl-fact-content">{amt_display}</span>
                             </div>
                             <div class="sl-fact-unit">
-                                <span class="sl-fact-title">📅 Application Deadline</span>
+                                <span class="sl-fact-title">Application deadline</span>
                                 <span class="sl-fact-content">{dead_disp}</span>
                                 <span class="sl-fact-sub">{dead_caption or ''}</span>
                             </div>
                             <div class="sl-fact-unit">
-                                <span class="sl-fact-title">🏛️ Governing Body</span>
+                                <span class="sl-fact-title">Governing body</span>
                                 <span class="sl-fact-content">{authority}</span>
                             </div>
                         </div>
@@ -529,17 +532,17 @@ with tab_matcher:
                     st.markdown(f"**Evaluation Summary**: {r.get('explanation')}")
                     st.markdown(
                         f"<div style='margin-bottom: 0.5rem;'>"
-                        f"<span class='sl-criteria-pill sl-pill-open'>✅ {len(passed)} Criteria Satisfied</span>"
-                        f"<span class='sl-criteria-pill sl-pill-closed'>❌ {len(failed)} Failed</span>"
-                        f"<span class='sl-criteria-pill sl-pill-pending'>❓ {len(unknown)} Pending Info</span>"
+                        f"<span class='sl-criteria-pill sl-pill-open'>{len(passed)} criteria satisfied</span>"
+                        f"<span class='sl-criteria-pill sl-pill-closed'>{len(failed)} failed</span>"
+                        f"<span class='sl-criteria-pill sl-pill-pending'>{len(unknown)} pending information</span>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
 
                     # Expandable Detailed Criteria Breakdown
-                    with st.expander("📋 View Eligibility Details & Source Evidence", expanded=False):
+                    with st.expander("View eligibility details and source evidence", expanded=False):
                         if passed:
-                            st.markdown("##### ✅ Eligibility Criteria Satisfied")
+                            st.markdown("##### Eligibility criteria satisfied")
                             for p in passed:
                                 c_name = humanize_criterion_type(p.get("criterion_type"))
                                 st.markdown(
@@ -550,7 +553,7 @@ with tab_matcher:
                                 )
 
                         if failed:
-                            st.markdown("##### ❌ Mandatory Criteria Not Satisfied")
+                            st.markdown("##### Mandatory criteria not satisfied")
                             for f in failed:
                                 c_name = humanize_criterion_type(f.get("criterion_type"))
                                 st.markdown(
@@ -561,7 +564,7 @@ with tab_matcher:
                                 )
 
                         if unknown:
-                            st.markdown("##### ❓ Missing Information / Pending Review")
+                            st.markdown("##### Missing information / pending review")
                             for u in unknown:
                                 c_name = humanize_criterion_type(u.get("criterion_type"))
                                 st.markdown(
@@ -572,7 +575,7 @@ with tab_matcher:
                                 )
 
                         if evidence:
-                            st.markdown("##### 🔍 Grounded Source Citations")
+                            st.markdown("##### Source citations")
                             for k, v in evidence.items():
                                 st.markdown(
                                     f"<div class='sl-citation-quote'>"
@@ -586,7 +589,7 @@ with tab_matcher:
                         st.markdown(
                             f"<div style='margin-top: 0.5rem;'>"
                             f"<a href='{url}' target='_blank' class='sl-portal-btn'>"
-                            f"🌐 Visit Official Portal ({authority}) ↗"
+                            f"Visit official portal ({authority})"
                             f"</a>"
                             f"</div>",
                             unsafe_allow_html=True,
@@ -624,14 +627,14 @@ with tab_matcher:
                     st.markdown(
                         """
                         <div class="sl-filter-title">
-                            <span>🔍 Instant Search & Quick Filters</span>
+                            <span>Search and quick filters</span>
                         </div>
                         """,
                         unsafe_allow_html=True,
                     )
                 with col_filter_reset:
                     st.button(
-                        "🔄 Reset Filters",
+                        "Reset filters",
                         key="reset_filters_top",
                         use_container_width=True,
                         on_click=reset_filter_state,
@@ -775,13 +778,12 @@ with tab_matcher:
 
             if total_filtered == 0:
                 st.warning(
-                    "🔍 **No scholarships match your active search and filter criteria.** "
+                    "**No scholarships match your active search and filter criteria.** "
                     "Try broadening your search term or click **Reset Filters** above to restore all evaluated scholarships."
                 )
                 st.markdown(
                     """
                     <div class="sl-empty-search-state">
-                        <div class="sl-empty-search-icon">🔍</div>
                         <div class="sl-empty-search-title">No Matching Opportunities Found</div>
                         <div class="sl-empty-search-desc">
                             We could not find any scholarship records matching your search query and filter combination.
@@ -795,11 +797,11 @@ with tab_matcher:
             st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
             subtab_open, subtab_hist, subtab_pot, subtab_not, subtab_prov = st.tabs([
-                f"🟢 Open Opportunities ({len(filtered_open)})",
-                f"🏛️ Historical & Unconfirmed Matches ({len(filtered_hist)})",
-                f"🟡 Potentially Eligible ({len(filtered_pot)})",
-                f"🔴 Not Eligible ({len(filtered_not)})",
-                f"⚠️ Provisional / Unverified ({len(filtered_prov)})",
+                f"Open opportunities ({len(filtered_open)})",
+                f"Historical & unconfirmed ({len(filtered_hist)})",
+                f"Potentially eligible ({len(filtered_pot)})",
+                f"Not eligible ({len(filtered_not)})",
+                f"Provisional / unverified ({len(filtered_prov)})",
             ])
 
             with subtab_open:
@@ -810,21 +812,21 @@ with tab_matcher:
                 else:
                     if not open_confirmed:
                         st.info(
-                            "ℹ️ **No currently open verified opportunities confirmed.**\n\n"
+                            "**No currently open verified opportunities confirmed.**\n\n"
                             "No scholarship with verified official evidence is currently confirmed open for student applications. "
                             "Review the **Historical & Unconfirmed Matches** tab for past scholarship benchmarks and schemes with unconfirmed application cycles."
                         )
                     else:
-                        st.info("ℹ️ **No open opportunities match the active search and filter criteria.**")
+                        st.info("**No open opportunities match the active search and filter criteria.**")
 
             with subtab_hist:
                 hist_unknown = [r for r in filtered_hist if (r.get("application_status") or "").strip().lower() not in ("open", "closed", "expired")]
                 hist_closed = [r for r in filtered_hist if (r.get("application_status") or "").strip().lower() in ("closed", "expired")]
 
                 if hist_unknown:
-                    st.markdown("### ⚪ Verified Guidelines — Application Status Unconfirmed")
+                    st.markdown("### Verified guidelines — application status unconfirmed")
                     st.warning(
-                        "⚠️ **Application status has not been confirmed. Check the official source before applying.**\n\n"
+                        "**Application status has not been confirmed. Check the official source before applying.**\n\n"
                         "Your profile matches the published eligibility criteria verified from official guidelines, "
                         "but active portal submission dates are not established in the circular."
                     )
@@ -832,9 +834,9 @@ with tab_matcher:
                         render_match_card(r)
 
                 if hist_closed:
-                    st.markdown("### 🔴 Historical Scholarships — Not Currently Open")
+                    st.markdown("### Historical scholarships — not currently open")
                     st.info(
-                        "ℹ️ **Historical Scholarship — Not Currently Open**: Your profile matches the published criteria "
+                        "**Historical scholarship — not currently open**: Your profile matches the published criteria "
                         "for these past scholarship cycles. Documented historically from official records for your reference. "
                         "Do not attempt to apply for closed cycles."
                     )
@@ -842,7 +844,7 @@ with tab_matcher:
                         render_match_card(r)
 
                 if not hist_unknown and not hist_closed:
-                    st.info("ℹ️ **No historical or unconfirmed eligible scholarships match the active search and filter criteria.**")
+                    st.info("**No historical or unconfirmed eligible scholarships match the active search and filter criteria.**")
 
             with subtab_pot:
                 if filtered_pot:
@@ -850,7 +852,7 @@ with tab_matcher:
                     for r in filtered_pot:
                         render_match_card(r, show_provisional_alert=r.get("is_provisional", False))
                 else:
-                    st.info("ℹ️ **No potentially eligible scholarships match the active search and filter criteria.**")
+                    st.info("**No potentially eligible scholarships match the active search and filter criteria.**")
 
             with subtab_not:
                 if filtered_not:
@@ -858,18 +860,18 @@ with tab_matcher:
                     for r in filtered_not:
                         render_match_card(r)
                 else:
-                    st.info("ℹ️ **No ineligible scholarships match the active search and filter criteria.**")
+                    st.info("**No ineligible scholarships match the active search and filter criteria.**")
 
             with subtab_prov:
                 if filtered_prov:
                     st.warning(
-                        "⚠️ **Provisional Matching Section**: The scholarships below are stored in the local database "
+                        "**Provisional matching section**: The scholarships below are stored in the local database "
                         "but remain UNVERIFIED against primary source circulars. They are never presented as confirmed eligible."
                     )
                     for r in filtered_prov:
                         render_match_card(r, show_provisional_alert=True)
                 else:
-                    st.info("ℹ️ **No provisional or unverified scholarship records match the active search and filter criteria.**")
+                    st.info("**No provisional or unverified scholarship records match the active search and filter criteria.**")
 
 # -----------------------------------------------------------------------------
 # Tab 2: Stored Scholarship Records
@@ -898,7 +900,7 @@ with tab_scholarships:
 
     if not filtered_scholarships:
         st.info(
-            "📌 **No scholarship records found matching criteria.**\n\n"
+            "**No scholarship records found matching criteria.**\n\n"
             "To populate records from official government sources, click **Run Polite Ingestion** "
             "in the sidebar or use the `/api/ingest` endpoint."
         )
@@ -926,7 +928,7 @@ with tab_scholarships:
                     <div class="sl-card-authority-badge">{authority}</div>
                     <div class="sl-card-title">{scheme_name}</div>
                     <div class="sl-pillar-row">
-                        <span class="sl-status-chip {status_chip_class}">🛡️ {status.upper()}</span>
+                        <span class="sl-status-chip {status_chip_class}">{status.upper()}</span>
                         <span class="sl-status-chip sl-pill-slate">{app_badge}</span>
                     </div>
                     """,
@@ -937,26 +939,26 @@ with tab_scholarships:
 
                 if notes:
                     if status == "verified":
-                        st.success(f"🛡️ **Verification Status**: {notes}")
+                        st.success(f"**Verification status**: {notes}")
                     elif status == "unverified":
-                        st.warning(f"⚠️ **Verification Warning**: {notes}")
+                        st.warning(f"**Verification warning**: {notes}")
                     else:
-                        st.error(f"🚨 **Verification Flag**: {notes}")
+                        st.error(f"**Verification flag**: {notes}")
 
                 st.markdown(
                     f"""
                     <div class="sl-key-facts-box">
                         <div class="sl-fact-unit">
-                            <span class="sl-fact-title">💰 Benefit Amount</span>
+                            <span class="sl-fact-title">Benefit amount</span>
                             <span class="sl-fact-content">{amt_disp}</span>
                         </div>
                         <div class="sl-fact-unit">
-                            <span class="sl-fact-title">📅 Application Deadline</span>
+                            <span class="sl-fact-title">Application deadline</span>
                             <span class="sl-fact-content">{dead_disp}</span>
                             <span class="sl-fact-sub">{dead_cap or ''}</span>
                         </div>
                         <div class="sl-fact-unit">
-                            <span class="sl-fact-title">⏱️ Verification Record</span>
+                            <span class="sl-fact-title">Verification record</span>
                             <span class="sl-fact-content">{'Verified' if item.get('last_verified_timestamp') else 'Unverified'}</span>
                             <span class="sl-fact-sub">{item.get('last_verified_timestamp') or 'Pending official circular'}</span>
                         </div>
@@ -971,20 +973,20 @@ with tab_scholarships:
                 quotes = item.get("supporting_quotations", [])
                 evidence = item.get("field_evidence", {})
 
-                with st.expander("📋 View Official Criteria, Required Documents & Evidence", expanded=False):
+                with st.expander("View official criteria, required documents and evidence", expanded=False):
                     if criteria:
-                        st.markdown("##### 📌 Official Eligibility Criteria")
+                        st.markdown("##### Official eligibility criteria")
                         for crit in criteria:
                             st.markdown(f"- {crit}")
                     else:
                         st.caption("No verified criteria extracted from retrieved content.")
 
                     if docs:
-                        st.markdown("##### 📄 Required Documents")
+                        st.markdown("##### Required documents")
                         st.markdown(", ".join([f"`{d}`" for d in docs]))
 
                     if evidence or quotes:
-                        st.markdown("##### 🔍 Grounded Source Citations")
+                        st.markdown("##### Source citations")
                         if evidence:
                             for k, v in evidence.items():
                                 st.markdown(f"<div class='sl-citation-quote'><b>{k.replace('_', ' ').title()}</b>: &ldquo;{v}&rdquo;</div>", unsafe_allow_html=True)
@@ -996,7 +998,7 @@ with tab_scholarships:
                     st.markdown(
                         f"<div style='margin-top: 0.5rem;'>"
                         f"<a href='{url}' target='_blank' class='sl-portal-btn'>"
-                        f"🌐 View Official Portal ({authority}) ↗"
+                        f"View official portal ({authority})"
                         f"</a>"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -1018,7 +1020,7 @@ with tab_sources:
         v_color = "green" if v_status == "verified" else ("orange" if v_status == "unverified" else "red")
         src_type = s.get("source_type", "html").upper()
 
-        with st.expander(f"🏛️ {s.get('name')} [{src_type}] — Status: {v_status.upper()}"):
+        with st.expander(f"{s.get('name')} [{src_type}] — Status: {v_status.upper()}"):
             col_a, col_b = st.columns(2)
             with col_a:
                 st.write(f"**Authority**: {s.get('authority')}")
@@ -1035,10 +1037,10 @@ with tab_sources:
                 st.write(f"**Last Verified**: `{s.get('last_verified_timestamp') or 'Never'}`")
 
             if s.get("last_error"):
-                st.error(f"⚠️ **Last Fetch Error**: {s.get('last_error')}")
+                st.error(f"**Last fetch error**: {s.get('last_error')}")
 
             if s.get("notes"):
-                st.info(f"ℹ️ **Notes**: {s.get('notes')}")
+                st.info(f"**Notes**: {s.get('notes')}")
 
 
 # -----------------------------------------------------------------------------
@@ -1053,7 +1055,7 @@ with tab_history:
     else:
         for run in runs_data:
             success = run.get("success", False)
-            badge = "✅ SUCCESS" if success else "❌ FAILED"
+            badge = "SUCCESS" if success else "FAILED"
             color = "green" if success else "red"
 
             with st.container(border=True):
